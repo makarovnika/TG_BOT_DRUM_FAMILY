@@ -1,16 +1,22 @@
 """Smoke-тест против реального YClients API.
 
-Запускается ВРУЧНУЮ после получения партнёрского токена:
+Запускается ВРУЧНУЮ:
 
     uv run python -m src.yclients.smoke_test
 
-Делает три безопасных запроса: auth, get_services, get_staff. Ничего не создаёт
-и не меняет — только читает справочники. Если падает на парсинге pydantic —
-значит, реальный API отдаёт поля иначе, чем модели в `src/yclients/models.py`,
-и модели надо поправить (это ожидаемая часть фичи yclients-001).
+Все запросы — read-only Booking API:
+- auth (только в legacy-режиме);
+- get_services;
+- get_staff;
+- get_book_dates для первого преподавателя на ближайшие 2 недели;
+- get_book_times для первой свободной даты этого преподавателя.
+
+Ничего не создаёт. POST /book_record намеренно НЕ дёргается — он создаст
+реальную запись в школьном расписании.
 """
 
 import asyncio
+from datetime import date, timedelta
 
 from src.config import get_settings
 from src.yclients.client import YClientsClient
@@ -63,7 +69,40 @@ async def main() -> None:
         for member in staff:
             print(f"   - [{member.id:>6}] {member.name}: {member.specialization or '-'}")
 
-    print("\n==> smoke OK")
+        # Берём первого преподавателя и смотрим, на какие даты можно записаться
+        # в ближайшие 2 недели.
+        if not staff:
+            print("\n==> нет преподавателей — пропускаем dates/times")
+            return
+        first_staff = staff[0]
+        today = date.today()
+        date_from = today.isoformat()
+        date_to = (today + timedelta(days=14)).isoformat()
+
+        dates = await yc.get_book_dates(
+            staff_id=first_staff.id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        print(
+            f"\n==> book_dates для {first_staff.name} ({date_from}..{date_to}):"
+            f"\n   booking_dates ({len(dates.booking_dates)}): {dates.booking_dates[:10]}"
+            f"\n   working_dates ({len(dates.working_dates)}): {dates.working_dates[:10]}"
+        )
+
+        # И слоты на первую доступную дату.
+        if not dates.booking_dates:
+            print("\n==> нет дат для записи — пропускаем slots")
+            return
+        first_date = dates.booking_dates[0]
+        slots = await yc.get_book_times(staff_id=first_staff.id, date=first_date)
+        print(f"\n==> book_times для {first_staff.name} {first_date} ({len(slots)} слотов):")
+        for slot in slots[:5]:
+            print(f"   - {slot.time}  (datetime: {slot.datetime})")
+        if len(slots) > 5:
+            print(f"   ... и ещё {len(slots) - 5}")
+
+    print("\n==> smoke OK (book_record намеренно не дёргали — он создаёт реальную запись)")
 
 
 if __name__ == "__main__":

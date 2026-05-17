@@ -31,7 +31,16 @@ from src.yclients.exceptions import (
     YClientsRateLimited,
     YClientsServerError,
 )
-from src.yclients.models import AuthResponse, Client, Service, Staff
+from src.yclients.models import (
+    AuthResponse,
+    BookableDates,
+    BookRecordAppointment,
+    BookRecordResponse,
+    Client,
+    Service,
+    Slot,
+    Staff,
+)
 
 BASE_URL = "https://api.yclients.com/api/v1"
 
@@ -310,6 +319,105 @@ class YClientsClient:
             json=body,
         )
         return Client.model_validate(payload["data"])
+
+    async def get_book_dates(
+        self,
+        *,
+        staff_id: int,
+        service_ids: list[int] | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> BookableDates:
+        """GET /book_dates/{company_id} — доступные для записи даты.
+
+        - `staff_id=0` — «любой тренер» (объединение слотов всех);
+        - `service_ids` — фильтр: даты, когда доступна хотя бы одна из услуг;
+        - `date_from` / `date_to` — диапазон ISO-дат `YYYY-MM-DD`.
+
+        Использовать `booking_dates` из ответа — это даты, на которые
+        реально можно записаться (а не просто рабочие дни школы).
+        """
+        params: dict[str, Any] = {"staff_id": staff_id}
+        if service_ids:
+            # YClients ждёт `service_ids[]=N&service_ids[]=M` — httpx делает это
+            # сам, когда значение — список.
+            params["service_ids[]"] = service_ids
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
+        payload = await self._request(
+            "GET",
+            f"/book_dates/{self._company_id}",
+            params=params,
+        )
+        return BookableDates.model_validate(payload["data"])
+
+    async def get_book_times(
+        self,
+        *,
+        staff_id: int,
+        date: str,
+        service_ids: list[int] | None = None,
+    ) -> list[Slot]:
+        """GET /book_times/{company_id}/{staff_id}/{date} — свободные слоты.
+
+        - `staff_id=0` — слоты «любого свободного тренера»;
+        - `date` — ISO `YYYY-MM-DD`;
+        - `service_ids` — фильтр: слоты, в которые помещается хотя бы одна
+          из указанных услуг (длительность ≥ нужной).
+        """
+        params: dict[str, Any] = {}
+        if service_ids:
+            params["service_ids[]"] = service_ids
+        payload = await self._request(
+            "GET",
+            f"/book_times/{self._company_id}/{staff_id}/{date}",
+            params=params,
+        )
+        return [Slot.model_validate(item) for item in payload["data"]]
+
+    async def book_record(
+        self,
+        *,
+        phone: str,
+        fullname: str,
+        appointments: list[BookRecordAppointment],
+        email: str | None = None,
+        comment: str | None = None,
+        code: str | None = None,
+    ) -> list[BookRecordResponse]:
+        """POST /book_record/{company_id} — создать запись на занятие(я).
+
+        - `phone`/`fullname` идентифицируют клиента; если такого нет в YClients,
+          он будет создан автоматически (поэтому регистрация и запись по сути
+          могут идти одним вызовом — но мы делаем отдельно через `create_client`
+          для контроля привязки `yclients_client_id` в нашей БД);
+        - `code` — SMS-код из `POST /book_code/{company_id}`. Если YClients
+          школы требует SMS-подтверждение, без `code` запрос вернёт ошибку.
+          Это известный открытый вопрос (см. `booking-individual-003` notes);
+        - возврат — массив записей (по одной на каждый appointment в запросе).
+        """
+        body: dict[str, Any] = {
+            "phone": phone,
+            "fullname": fullname,
+            "appointments": [a.model_dump() for a in appointments],
+        }
+        if email:
+            body["email"] = email
+        if comment:
+            body["comment"] = comment
+        if code is not None:
+            body["code"] = code
+        payload = await self._request(
+            "POST",
+            f"/book_record/{self._company_id}",
+            json=body,
+        )
+        # data может быть как массивом, так и одним объектом — нормализуем.
+        data = payload["data"]
+        items = data if isinstance(data, list) else [data]
+        return [BookRecordResponse.model_validate(item) for item in items]
 
 
 def _safe_json(response: httpx.Response) -> object:

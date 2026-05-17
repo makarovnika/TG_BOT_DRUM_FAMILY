@@ -60,21 +60,63 @@ class Client(YClientsModel):
     # В YClients у клиента бывает много полей (sex, birth_date, …) — добавим по мере надобности.
 
 
-class Slot(YClientsModel):
-    """Слот времени из GET /book_times/{company_id}/{staff_id}/{date}."""
+class BookableDates(YClientsModel):
+    """Ответ GET /book_dates/{company_id}.
 
-    # YClients возвращает время как unix timestamp И как ISO-строку, выберем то, что есть.
-    datetime: str | None = None  # ISO-строка
+    Структура реального ответа YClients (проверено на школе Drum Family Томск):
+    - `booking_dates`: список ISO-строк дат, на которые можно записаться;
+    - `booking_days`: dict {"<номер_месяца>": [день, день, ...]} — те же дни,
+      разложенные по месяцам (для отрисовки календаря);
+    - `working_dates` / `working_days`: всё, что выше, но для рабочих дней
+      школы (более широкий набор — рабочий день ≠ день, на который есть слоты).
+
+    В UI бота используем `booking_dates` — это то, на что реально можно
+    записаться. `*_days` храним как есть на случай, если понадобятся.
+    """
+
+    booking_dates: list[str] = Field(default_factory=list)  # "YYYY-MM-DD"
+    booking_days: dict[str, list[int]] = Field(default_factory=dict)
+    working_dates: list[str] = Field(default_factory=list)
+    working_days: dict[str, list[int]] = Field(default_factory=dict)
+
+
+class Slot(YClientsModel):
+    """Слот времени из GET /book_times/{company_id}/{staff_id}/{date}.
+
+    YClients возвращает оба представления: ISO-строку (`datetime`) и
+    человекочитаемое время (`time`). В UI бота показываем `time`, но в
+    `book_record` отправляем `datetime` — он однозначно идентифицирует слот.
+    """
+
+    datetime: str | None = None  # ISO-строка, "2026-05-20T10:00:00+07:00"
     time: str | None = None  # "10:00"
     seance_length: int | None = None  # длительность в секундах
 
 
-class BookRecord(YClientsModel):
-    """Ответ POST /book_record/{company_id}."""
+class BookRecordAppointment(YClientsModel):
+    """Одно посещение в теле POST /book_record (массив appointments).
+
+    В YClients-флоу запись может содержать несколько услуг подряд, но для
+    нашего MVP школы барабанов одно посещение = одна услуга у одного тренера
+    в один слот.
+    """
+
+    id: int  # порядковый ID внутри запроса (обычно 1)
+    services: list[int]  # ID услуг
+    staff_id: int
+    datetime: str  # ISO-строка, та же, что вернулась из get_book_times
+
+
+class BookRecordResponse(YClientsModel):
+    """Ответ POST /book_record/{company_id}.
+
+    Реальный ответ содержит больше полей (services, staff, datetime и т. д.),
+    но для бота важны id и hash — они нужны для последующей отмены
+    через DELETE /user/records/{record_id}/{record_hash}.
+    """
 
     id: int
     hash: str | None = None
-    # Реальный ответ содержит больше полей; модель расширим после smoke-теста.
 
 
 class Record(YClientsModel):

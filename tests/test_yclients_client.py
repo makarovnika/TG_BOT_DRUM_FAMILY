@@ -24,6 +24,7 @@ from src.yclients.exceptions import (
     YClientsClientError,
     YClientsServerError,
 )
+from src.yclients.models import BookRecordAppointment
 
 # ---------- фикстуры ----------
 
@@ -370,3 +371,205 @@ async def test_constructor_raises_without_any_credentials() -> None:
     """Без user_token и без логина/пароля — ValueError на этапе создания."""
     with pytest.raises(ValueError, match="user_token"):
         YClientsClient(partner_token="x", company_id=1)
+
+
+# ---------- booking API: dates / times / book_record ----------
+
+
+async def test_get_book_dates_parses_response(client: YClientsClient) -> None:
+    """Реальный YClients возвращает booking_days как dict {month: [days]},
+    а не как плоский list — это подтверждено smoke-тестом школы."""
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/book_dates/12345").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "booking_dates": ["2026-05-20", "2026-05-21"],
+                        "booking_days": {"5": [20, 21]},
+                        "working_dates": ["2026-05-20", "2026-05-21", "2026-05-22"],
+                        "working_days": {"5": [20, 21, 22]},
+                    },
+                    "meta": [],
+                },
+            )
+        )
+
+        dates = await client.get_book_dates(staff_id=4773123)
+
+        assert dates.booking_dates == ["2026-05-20", "2026-05-21"]
+        assert dates.booking_days == {"5": [20, 21]}
+        # working_dates содержит даты, на которые нельзя записаться, но школа работает.
+        assert "2026-05-22" in dates.working_dates
+
+
+async def test_get_book_dates_passes_service_filter(client: YClientsClient) -> None:
+    """service_ids[] должен попасть в query как повторяющийся параметр."""
+    captured_query: dict[str, list[str]] = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        # httpx.URL.params возвращает QueryParams, multi_items сохраняет повторы.
+        for key, value in request.url.params.multi_items():
+            captured_query.setdefault(key, []).append(value)
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "booking_dates": [],
+                    "booking_days": {},
+                    "working_dates": [],
+                    "working_days": {},
+                },
+                "meta": [],
+            },
+        )
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/book_dates/12345").mock(side_effect=capture)
+
+        await client.get_book_dates(staff_id=0, service_ids=[111, 222])
+
+    assert captured_query.get("staff_id") == ["0"]
+    assert captured_query.get("service_ids[]") == ["111", "222"]
+
+
+async def test_get_book_times_parses_response(client: YClientsClient) -> None:
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/book_times/12345/4773123/2026-05-20").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": [
+                        {
+                            "datetime": "2026-05-20T10:00:00+07:00",
+                            "time": "10:00",
+                            "seance_length": 3600,
+                        },
+                        {
+                            "datetime": "2026-05-20T11:00:00+07:00",
+                            "time": "11:00",
+                            "seance_length": 3600,
+                        },
+                    ],
+                    "meta": [],
+                },
+            )
+        )
+
+        slots = await client.get_book_times(staff_id=4773123, date="2026-05-20")
+
+        assert len(slots) == 2
+        assert slots[0].time == "10:00"
+        assert slots[0].datetime == "2026-05-20T10:00:00+07:00"
+
+
+async def test_book_record_sends_correct_body(client: YClientsClient) -> None:
+    """Тело запроса должно содержать appointments с правильной структурой."""
+    captured_body: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured_body.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": [{"id": 999, "hash": "abc123"}],
+                "meta": [],
+            },
+        )
+
+    appointment = BookRecordAppointment(
+        id=1,
+        services=[16956866],
+        staff_id=4773123,
+        datetime="2026-05-20T10:00:00+07:00",
+    )
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.post("/book_record/12345").mock(side_effect=capture)
+
+        result = await client.book_record(
+            phone="+79991112233",
+            fullname="Иван",
+            appointments=[appointment],
+        )
+
+    assert result[0].id == 999
+    assert result[0].hash == "abc123"
+    assert captured_body["phone"] == "+79991112233"
+    assert captured_body["fullname"] == "Иван"
+    assert captured_body["appointments"][0]["staff_id"] == 4773123
+    assert captured_body["appointments"][0]["services"] == [16956866]
+    # code не передавали → не должно быть в теле
+    assert "code" not in captured_body
+
+
+async def test_book_record_passes_sms_code_when_given(client: YClientsClient) -> None:
+    """Если YClients требует SMS-подтверждение, code должен попасть в тело."""
+    captured_body: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured_body.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"success": True, "data": [{"id": 1, "hash": "h"}], "meta": []},
+        )
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.post("/book_record/12345").mock(side_effect=capture)
+
+        await client.book_record(
+            phone="+79991112233",
+            fullname="Иван",
+            appointments=[
+                BookRecordAppointment(
+                    id=1,
+                    services=[1],
+                    staff_id=1,
+                    datetime="2026-05-20T10:00:00+07:00",
+                )
+            ],
+            code="1234",
+        )
+
+    assert captured_body["code"] == "1234"
+
+
+async def test_book_record_normalizes_single_object_response(client: YClientsClient) -> None:
+    """YClients может вернуть `data` как одиночный объект — тоже нормализуем в list."""
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.post("/book_record/12345").mock(
+            return_value=httpx.Response(
+                200,
+                json={"success": True, "data": {"id": 42, "hash": "h42"}, "meta": []},
+            )
+        )
+
+        result = await client.book_record(
+            phone="+79991112233",
+            fullname="И",
+            appointments=[
+                BookRecordAppointment(
+                    id=1,
+                    services=[1],
+                    staff_id=1,
+                    datetime="2026-05-20T10:00:00+07:00",
+                )
+            ],
+        )
+
+    assert len(result) == 1
+    assert result[0].id == 42
