@@ -1,7 +1,7 @@
 {
   "project": "drum-school-bot",
   "last_updated": "2026-05-17",
-  "active_feature": "registration-002",
+  "active_feature": null,
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -64,8 +64,9 @@
       "area": "bot",
       "title": "Регистрация ученика через FSM",
       "user_visible_behavior": "Новый пользователь после /start проходит ask_name → ask_phone, бот находит/создаёт клиента в YClients и привязывает telegram_id к yclients_client_id; повторный /start ведёт сразу в главное меню.",
-      "status": "not_started",
-      "partial_progress": "DB-слой (User-модель, фабрика async-сессий, init_db) и тесты CRUD готовы в src/db/ — 6 тестов зелёных. Осталось: FSM-состояния, обработчики, сервис user_service.py с интеграцией YClients-клиента.",
+      "status": "blocked",
+      "blocker": "YClients возвращает 403 «Нет прав на управление филиалом с идентификатором 1058417» на GET /clients/1058417. Booking API (/book_services, /book_staff) работает, но Admin API (/clients) требует, чтобы системный пользователь приложения был ПРИВЯЗАН к филиалу через админку YClients школы (раздел «Интеграции/Приложения»). Альтернатива — переключиться на legacy-режим с YCLIENTS_USER_LOGIN/PASSWORD админа.",
+      "partial_progress": "Реализовано всё, кроме разблокировки YClients: UserService (search→create→upsert), FSM (waiting_for_name/phone), normalize_phone (+биас на РФ), handlers (/start с веткой существующий-новый, registration FSM, menu_stub), DepsMiddleware (AsyncSession + UserService на запрос), main.py с DI, главное меню и заглушки. Тесты — 36/36 зелёные, включая 11 новых на user_service и normalize_phone. Бот успешно прошёл путь до запроса в YClients: FSM работает, нормализация телефона работает, обработка ошибок показывает пользователю «YClients сейчас не отвечает».",
       "verification": [
         "В тестовой Telegram-сессии: новый пользователь — проходит FSM регистрации.",
         "В YClients появляется/находится клиент с указанным телефоном.",
