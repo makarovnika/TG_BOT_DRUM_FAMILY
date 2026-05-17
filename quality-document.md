@@ -31,7 +31,7 @@
 | Bot entry (`src/main.py`) | A | минимальный, одна команда `/start`, проверен в Telegram | высокая | — | 2026-05-17 |
 | Bot handlers (`src/bot/handlers/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
 | FSM states (`src/bot/states/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
-| YClients client (`src/yclients/`) | B | retry/refresh реализованы, 13 тестов на моках | высокая | не проверено против реального API (нет партнёрского токена) | 2026-05-17 |
+| YClients client (`src/yclients/`) | A | 2 режима auth (static/legacy), retry/refresh, 25 тестов на моках, smoke против реального API прошёл | высокая | — | 2026-05-17 |
 | DB layer (`src/db/`) | A | User-модель + async-сессия + 6 тестов CRUD на in-memory SQLite | высокая | — | 2026-05-17 |
 | Services (`src/services/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
 | Конфиг (`src/config.py`) | B | pydantic-settings, ленивый `get_settings()` | высокая | не покрыт тестами (не нужно на этом этапе) | 2026-05-17 |
@@ -39,6 +39,17 @@
 | Git hooks (`.githooks/`) | A | pre-commit с ruff + format-check + pytest, активен | высокая | — | 2026-05-17 |
 
 ## Change History
+
+### 2026-05-17 (поздний вечер) — Session 005
+
+- Changes: добавлен статический режим аутентификации (User Token системного
+  пользователя). Smoke против реального API школы Drum Family Томск прошёл —
+  4 услуги, 6 преподавателей. `yclients-001` закрыт в `passing`.
+- Domains promoted: —
+- Domains demoted: —
+- New gaps identified: услуги школы в YClients не содержат duration —
+  при показе расписания нужно будет искать длительность в другом месте.
+- Gaps closed: «pydantic-модели не проверены против реального API» — закрыто.
 
 ### 2026-05-17 (поздний вечер) — Session 004
 

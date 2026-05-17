@@ -6,16 +6,15 @@
 - Standard startup path: `./init.sh`
 - Standard verification path: `uv run pytest -q` + `uv run ruff check src tests`
   (внутри `./init.sh`), плюс `pre-commit` hook в `.githooks/pre-commit`.
-- Git: репозиторий инициализирован, ветка `main`, 3 коммита
-  (`0255469` initial → `9fe2009` db → `0c71139` yclients).
-- Last passing feature: `setup-000` (каркас + рабочий бот @DrumFamily_Tomsk_Bot,
-  команда `/start` подтверждена скриншотом).
-- Current highest-priority unfinished feature: `yclients-001` — в статусе `blocked`
-  (но ~80% кода готово на моках, 13 тестов зелёных).
-- Current blocker: партнёрский токен YClients ещё не получен
-  (заявка на developers.yclients.com, рассмотрение несколько дней).
-- Дополнительно: ~30% будущей фичи `registration-002` тоже закрыто авансом
-  (DB-слой `src/db/` + 6 тестов).
+- Git: репозиторий инициализирован, ветка `main`, 6 коммитов
+  (`0255469` initial → `9fe2009` db → `0c71139` yclients → `c276909` docs →
+  `a99df69` static-token → smoke OK).
+- Last passing feature: `yclients-001` — клиент работает против реального API
+  школы Drum Family Томск (4 услуги, 6 преподавателей), 25 тестов зелёные.
+- Current highest-priority unfinished feature: `registration-002` — старт.
+- Current blocker: нет.
+- Известное ограничение: вопрос про SMS-подтверждение `book_record` для
+  `booking-individual-003` всё ещё открыт (нужно к фиче 3, не блокирует фичу 2).
 
 ## Session Log
 
@@ -85,6 +84,44 @@
   - Опционально (если есть желание двигаться вперёд): инициализировать git-
     репозиторий и сделать первый коммит, добавить пре-коммит хуки с ruff
     (это не блокирует фичи и улучшает гигиену).
+
+### Session 005 — закрытие yclients-001 в passing
+
+- Date: 2026-05-17
+- Goal: получить партнёрский+user-токены, прогнать smoke против реального API,
+  закрыть `yclients-001` в `passing`.
+- Completed:
+  - Никита получил статический User Token системного пользователя в кабинете
+    приложения YClients (вкладка «Доступ к API», права: Журнал записи 5/5,
+    Форма записи 26/26, Клиентская база 20/20).
+  - Никита получил партнёрский токен («Общая информация»).
+  - В коде добавлена поддержка нового режима аутентификации (статический
+    user_token вместо динамического через POST /auth): коммит `a99df69`.
+  - Добавлены 5 тестов на статический режим — итого 25 тестов зелёные.
+  - В `.env` заполнены `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`,
+    `YCLIENTS_COMPANY_ID` (была опечатка `CLIENTS_COMPANY_ID` — поправили).
+  - Smoke-тест против реального API школы Drum Family Томск прошёл:
+    - 4 услуги: Пробный урок (16956866), Персональная тренировка (17082316),
+      Персональная со старшим (15830372), Аренда класса (17081862);
+    - 6 преподавателей: Асад Шади, Татьяна Петрова, Джамлан Бомиссо,
+      Влад Шоки, Арина Передумова, Администратор (Аренда класса).
+  - `yclients-001` → `passing`, `active_feature` → `registration-002`.
+- Verification run: `uv run python -m src.yclients.smoke_test` (зелёный),
+  `uv run pytest -q` (25 passed), pre-commit hook на коммите `a99df69`.
+- Evidence captured: см. `feature_list.json` → `yclients-001.evidence`.
+- Commits: `a99df69` (static-token support).
+- Files or artifacts updated:
+  - изменены: `.env.example`, `src/config.py`, `src/yclients/client.py`,
+    `src/yclients/smoke_test.py`, `tests/test_yclients_client.py`,
+    `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue:
+  - в реальных ответах YClients у услуг `duration=0` — школа не заполнила;
+    некритично, поле опциональное;
+  - вопрос про SMS-подтверждение `book_record` всё ещё открыт (нужен к
+    `booking-individual-003`, не блокирует `registration-002`).
+- Next best step: начать `registration-002` — FSM (ask_name → ask_phone),
+  сервис `user_service.py` поверх DB + YClients-клиента, обработчик `/start`
+  с веткой «новый/уже зарегистрирован».
 
 ### Session 004 — параллельная работа пока ждём токен YClients
 

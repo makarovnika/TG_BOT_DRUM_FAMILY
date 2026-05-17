@@ -1,7 +1,7 @@
 {
   "project": "drum-school-bot",
   "last_updated": "2026-05-17",
-  "active_feature": null,
+  "active_feature": "registration-002",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -43,8 +43,7 @@
       "area": "yclients",
       "title": "Async-клиент YClients API",
       "user_visible_behavior": "Внутренний клиент умеет авторизоваться и читать справочники (услуги, преподаватели, поиск клиента).",
-      "status": "blocked",
-      "blocker": "Ждём партнёрский токен YClients (заявка на developers.yclients.com). До получения токена нельзя прогнать src.yclients.smoke_test против реального API. ~80% кода фичи готово на моках, осталась только финальная проверка соответствия моделей реальным ответам.",
+      "status": "passing",
       "verification": [
         "uv run python -m src.yclients.smoke_test выводит список услуг и преподавателей школы.",
         "uv run pytest tests/test_yclients_client.py -q — все тесты с respx-моками зелёные.",
@@ -52,11 +51,12 @@
         "401 → перевыпуск user_token; 429 → retry с backoff; 5xx → 3 попытки."
       ],
       "evidence": [
-        "2026-05-17: src/yclients/client.py — YClientsClient с retry/refresh реализован.",
-        "2026-05-17: tests/test_yclients_client.py — 13 тестов на respx-моках, все зелёные.",
-        "2026-05-17: 4 из 4 пунктов verification закрыты КРОМЕ smoke_test против реального API (требует партнёрского токена)."
+        "2026-05-17: src/yclients/client.py — YClientsClient с retry/refresh реализован, поддерживает оба режима (статический User Token + legacy login/password).",
+        "2026-05-17: tests/test_yclients_client.py — 25 тестов на respx-моках, все зелёные (включая 5 на статический режим).",
+        "2026-05-17: smoke_test против реального API школы Drum Family Томск прошёл: вернулись 4 услуги (id 16956866, 17082316, 15830372, 17081862) и 6 преподавателей (id 4773123, 4693026, 4493382, 3862524, 3294770, 3253048). Auth-заголовок принят, парсинг pydantic-моделей не упал.",
+        "2026-05-17: режим — статический User Token, partner_token+user_token из developers.yclients.com → «Доступ к API»; права user_token: Журнал записи (5/5), Форма записи (26/26), Клиентская база (20/20)."
       ],
-      "notes": "Pydantic-модели в src/yclients/models.py написаны по документации без проверки против реального API. После получения токена прогнать smoke_test, могут понадобиться правки полей."
+      "notes": "Все 4 пункта verification закрыты. В реальных ответах duration услуг = 0 (школа не заполнила) — не критично, поле опциональное. Pydantic-модели не сломались на других полях."
     },
     {
       "id": "registration-002",
