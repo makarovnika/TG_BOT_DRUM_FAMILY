@@ -9,7 +9,8 @@
 FROM python:3.11-slim AS builder
 
 # uv-инсталляция через официальный образ (быстрее, чем curl|sh).
-COPY --from=ghcr.io/astral-sh/uv:0.4 /uv /usr/local/bin/uv
+# Версия должна быть >= той, что генерировала uv.lock (локально 0.11.x).
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /usr/local/bin/uv
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \

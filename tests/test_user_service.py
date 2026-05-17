@@ -50,6 +50,23 @@ def test_normalize_phone_too_long() -> None:
     assert normalize_phone("1234567890123456") is None  # 16 цифр
 
 
+def test_normalize_phone_strips_letters() -> None:
+    """Контракт: буквы тихо выбрасываются, остаются только цифры."""
+    assert normalize_phone("+7abc999def111ghi2233") == "+79991112233"
+
+
+def test_normalize_phone_unicode_digits_rejected() -> None:
+    """Контракт: только ASCII-цифры. Юникод-цифры (٩) НЕ учитываются."""
+    # 7 + 4 юникод-цифр = слишком короткое после фильтрации, должно дать None
+    assert normalize_phone("+7٩٩٩٩") is None
+
+
+def test_normalize_phone_short_russian_rejected() -> None:
+    """8 или 9 цифр — недостаточно даже для бесстранового РФ-формата."""
+    assert normalize_phone("99911122") is None  # 8 цифр
+    assert normalize_phone("999111223") is None  # 9 цифр
+
+
 # ---------- UserService ----------
 
 

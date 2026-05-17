@@ -133,16 +133,19 @@ class YClientsClient:
 
         Поведение по статусам:
         - 200 → возвращаем JSON;
-        - 401 → перевыпускаем user_token и повторяем (не считается ретраем);
-        - 429 → backoff, считается ретраем;
-        - 5xx → backoff, считается ретраем;
-        - другие 4xx → YClientsClientError, ретраев нет.
+        - 401 (legacy-режим, есть логин/пароль) → перевыпускаем user_token
+          и повторяем; повтор СЪЕДАЕТ один retry-слот (раньше так не было,
+          теперь честно — иначе при последовательных 401 цикл может работать
+          дольше max_retries);
+        - 401 (статический режим или повторно после refresh) → YClientsAuthError;
+        - 429 → backoff, ретрай;
+        - 5xx → backoff, ретрай;
+        - другие 4xx → YClientsClientError, без ретраев.
         После `max_retries` неудачных попыток — YClientsServerError или
         YClientsRateLimited (в зависимости от последнего статуса).
         """
         last_exception: YClientsError | None = None
-        # 401 не считается ретраем, поэтому отдельный счётчик.
-        auth_retries_left = 1
+        already_refreshed = False  # один refresh user_token на один request-flow
 
         for attempt in range(self._max_retries):
             if self._user_token is None:
@@ -166,12 +169,12 @@ class YClientsClient:
             if status == 200:
                 return response.json()
 
-            if status == 401 and auth_retries_left > 0 and self._can_refresh_token:
-                auth_retries_left -= 1
+            if status == 401 and not already_refreshed and self._can_refresh_token:
+                already_refreshed = True
                 log.info("yclients.user_token_expired", refreshing=True)
                 self._user_token = None
                 await self._ensure_authed()
-                continue  # повтор без увеличения attempt — это не "ретрай"
+                continue
 
             if status == 401:
                 # Либо нет логина/пароля (статический режим), либо refresh
@@ -209,8 +212,12 @@ class YClientsClient:
                 payload=_safe_json(response),
             )
 
-        # Все попытки исчерпаны.
-        assert last_exception is not None
+        # Все попытки исчерпаны. last_exception всегда выставлен — каждая
+        # итерация цикла, которая не сделала `return` или `raise`, проходит
+        # через ветку, где он задаётся. Используем явный raise, а не assert,
+        # потому что assert стрипается под `python -O`.
+        if last_exception is None:
+            raise YClientsServerError("Все попытки исчерпаны без явной причины")
         raise last_exception
 
     async def _ensure_authed(self) -> None:

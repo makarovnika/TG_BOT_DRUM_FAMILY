@@ -40,3 +40,14 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Healthcheck: проверяем, что python-процесс жив и импорт src.main не упал.
+    # Если бот залип (не отвечает Telegram'у, но процесс жив) — это сюда не
+    # ловится; для глубокого мониторинга нужно опрашивать Telegram getUpdates,
+    # что выходит за рамки MVP. Текущая версия защищает от «процесс умер, но
+    # systemd не подхватил» сценария.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import src.main"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

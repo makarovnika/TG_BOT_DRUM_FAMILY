@@ -37,8 +37,7 @@ echo "==> Baseline verification (pytest)"
 "${VERIFY_CMD[@]}"
 
 echo "==> Startup command:"
-printf '    %q' "${START_CMD[@]}"
-printf '\n'
+printf '    %s\n' "${START_CMD[*]}"
 
 if [ "${RUN_START_COMMAND:-0}" = "1" ]; then
   echo "==> Starting the bot"

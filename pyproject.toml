@@ -3,6 +3,9 @@ name = "drum-school-bot"
 version = "0.1.0"
 description = "Telegram-бот для школы барабанов поверх YClients"
 readme = "README.md"
+# Минимум 3.11 (ruff target — `py311`). Сверху не ограничиваем — пусть uv
+# сам подбирает доступный 3.11+. На локальной машине у Никиты подцепился 3.13;
+# на VPS через Docker берём строго 3.11 (см. Dockerfile).
 requires-python = ">=3.11"
 dependencies = [
     "aiogram>=3.4.0",

@@ -4,6 +4,11 @@
 - читает .env автоматически,
 - валидирует типы (например, YCLIENTS_COMPANY_ID должен быть числом),
 - не даст стартовать боту с пустым BOT_TOKEN — упадёт с понятной ошибкой.
+
+extra="forbid" — раньше тут было "ignore", и опечатка `CLIENTS_COMPANY_ID`
+вместо `YCLIENTS_COMPANY_ID` тихо проглатывалась, а бот работал с
+company_id=0 и падал на 404. Теперь незнакомые поля сразу дают
+понятную ошибку валидации.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,7 +18,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",
+        extra="forbid",
         case_sensitive=False,
     )
 
