@@ -565,6 +565,125 @@ async def test_book_record_passes_sms_code_when_given(client: YClientsClient) ->
     assert captured_body["code"] == "1234"
 
 
+async def test_get_client_by_id_parses_full_card(client: YClientsClient) -> None:
+    """GET /client/{cid}/{cli_id} возвращает одиночный объект (не массив)."""
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/client/12345/777").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "id": 777,
+                        "name": "Никита",
+                        "surname": "Макаров",
+                        "display_name": "Никита Макаров",
+                        "phone": "+79991112233",
+                        "email": "n@example.com",
+                        "visits": 38,
+                        "spent": 112350,
+                        "paid": 108850,
+                        "balance": -3500,
+                    },
+                    "meta": [],
+                },
+            )
+        )
+
+        c = await client.get_client_by_id(777)
+
+        assert c.id == 777
+        assert c.display_name == "Никита Макаров"
+        assert c.visits == 38
+        assert c.balance == -3500
+
+
+async def test_get_client_records_passes_filters(client: YClientsClient) -> None:
+    captured: dict[str, str] = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        for k, v in request.url.params.multi_items():
+            captured[k] = v
+        return httpx.Response(200, json={"success": True, "data": [], "meta": []})
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/records/12345").mock(side_effect=capture)
+
+        await client.get_client_records(
+            client_id=555,
+            start_date="2026-05-17",
+            end_date="2026-07-17",
+        )
+
+    assert captured["client_id"] == "555"
+    assert captured["start_date"] == "2026-05-17"
+    assert captured["end_date"] == "2026-07-17"
+
+
+async def test_get_client_records_parses_real_shape(client: YClientsClient) -> None:
+    """Структура, которую реально вернула школа Drum Family."""
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/records/12345").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": [
+                        {
+                            "id": 1698250308,
+                            "date": "2026-05-20 16:00:00",
+                            "datetime": "2026-05-20T16:00:00+07:00",
+                            "seance_length": 3600,
+                            "length": 3600,
+                            "visit_attendance": 0,
+                            "confirmed": 1,
+                            "deleted": False,
+                            "services": [{"id": 15830372, "title": "Персональная"}],
+                            "staff": {"id": 3294770, "name": "Влад"},
+                            "short_link": "https://yc.gl/c/abc/def/",
+                        }
+                    ],
+                    "meta": [],
+                },
+            )
+        )
+
+        records = await client.get_client_records(client_id=285529314)
+
+        assert len(records) == 1
+        r = records[0]
+        assert r.id == 1698250308
+        assert r.datetime == "2026-05-20T16:00:00+07:00"
+        assert r.services[0].title == "Персональная"
+        assert r.staff.name == "Влад"
+        assert r.visit_attendance == 0
+
+
+async def test_cancel_record_does_delete(client: YClientsClient) -> None:
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        del_route = mock.delete("/records/12345/999").mock(
+            return_value=httpx.Response(204)  # No Content
+        )
+
+        await client.cancel_record(999)
+
+        assert del_route.call_count == 1
+
+
+async def test_cancel_record_204_no_body_handled(client: YClientsClient) -> None:
+    """DELETE с пустым телом не должен падать на response.json()."""
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.delete("/records/12345/999").mock(return_value=httpx.Response(204))
+
+        # Не должно ничего бросить
+        await client.cancel_record(999)
+
+
 async def test_book_record_normalizes_single_object_response(client: YClientsClient) -> None:
     """YClients может вернуть `data` как одиночный объект — тоже нормализуем в list."""
     with respx.mock(base_url=BASE_URL) as mock:

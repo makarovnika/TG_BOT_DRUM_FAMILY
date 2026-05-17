@@ -51,13 +51,36 @@ class Staff(YClientsModel):
 
 
 class Client(YClientsModel):
-    """Клиент из GET/POST /clients/{company_id}."""
+    """Клиент из GET /client/{company_id}/{id} или GET /clients/{company_id}.
+
+    Поля проверены против реального API школы Drum Family Томск.
+    Все необязательные с дефолтом None — школа может не заполнить.
+
+    Денежные значения (`spent`, `paid`, `balance`) в копейках? Нет —
+    в реальных ответах это рубли как int (`balance: -3500` = долг 3500 ₽).
+    Отрицательный `balance` = ученик должен школе.
+    """
 
     id: int
     name: str
+    surname: str | None = None
+    patronymic: str | None = None
+    display_name: str | None = None
     phone: str
     email: str | None = None
-    # В YClients у клиента бывает много полей (sex, birth_date, …) — добавим по мере надобности.
+    birth_date: str | None = None  # YYYY-MM-DD, может быть пустой строкой
+    sex: str | None = None  # «Мужской» / «Женский» / «Неизвестно»
+    importance: str | None = None
+    comment: str | None = None  # внутренний комментарий администратора
+
+    # Денежная статистика (рубли).
+    visits: int | None = None
+    spent: int | None = None  # всего потрачено
+    paid: int | None = None  # всего оплачено
+    balance: int | None = None  # spent − paid, отрицательный = долг
+    discount: int | None = None  # процент персональной скидки
+
+    last_change_date: str | None = None  # ISO с таймзоной
 
 
 class BookableDates(YClientsModel):
@@ -120,11 +143,32 @@ class BookRecordResponse(YClientsModel):
 
 
 class Record(YClientsModel):
-    """Существующая запись из GET /records/{company_id}."""
+    """Существующая запись из GET /records/{company_id}.
+
+    Реальная структура (по школе Drum Family):
+    - `date` — локальное время школы (YYYY-MM-DD HH:MM:SS), удобно для парсинга;
+    - `datetime` — ISO с таймзоной +07:00 (Томск), однозначно;
+    - `seance_length` (он же `length`) — длительность в секундах;
+    - `services`/`staff` — вложенные объекты, парсятся как Service/Staff;
+    - `visit_attendance`: 0=ожидается, 1=пришёл, -1=не пришёл;
+    - `short_link`/`review_link` — публичные ссылки YClients на запись;
+    - `id` + неявный `hash` (получаем из YClients для отмены через DELETE).
+
+    `hash` в response /records НЕ приходит (он показывается только при
+    создании записи через book_record). Для отмены существующих записей
+    используем endpoint DELETE /records/{company_id}/{record_id} — с
+    admin-токеном, без hash.
+    """
 
     id: int
     services: list[Service] = Field(default_factory=list)
     staff: Staff | None = None
-    date: str | None = None  # "2026-05-20 10:00:00"
-    seance_length: int | None = None
-    visit_attendance: int | None = None  # 0 — ждём, 1 — пришёл, -1 — не пришёл
+    date: str | None = None  # "2026-05-20 10:00:00" — локальное время
+    datetime: str | None = None  # ISO с таймзоной, "2026-05-20T10:00:00+07:00"
+    seance_length: int | None = None  # секунды
+    length: int | None = None  # секунды; обычно равно seance_length
+    visit_attendance: int | None = None  # 0/1/-1
+    confirmed: int | None = None  # 1 = подтверждено
+    deleted: bool = False
+    comment: str | None = None
+    short_link: str | None = None  # https://yc.gl/c/.../...

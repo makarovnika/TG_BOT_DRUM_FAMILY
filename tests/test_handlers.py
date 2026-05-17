@@ -18,6 +18,8 @@ from aiogram.fsm.state import State
 
 from src.bot.handlers.commands import cmd_cancel, cmd_help
 from src.bot.handlers.menu_stub import ABOUT_TEXT, about, stub
+from src.bot.handlers.my_bookings import show_my_bookings
+from src.bot.handlers.profile import show_profile
 from src.bot.handlers.registration import (
     got_contact,
     got_name,
@@ -26,9 +28,12 @@ from src.bot.handlers.registration import (
     phone_not_recognized,
 )
 from src.bot.handlers.start import cmd_start
-from src.bot.keyboards.main_menu import MENU_BOOK, MENU_MY_BOOKINGS, MENU_PROFILE
+from src.bot.keyboards.main_menu import MENU_BOOK, MENU_CANCEL
 from src.bot.states.registration import RegistrationStates
 from src.db.models import User
+from src.yclients.exceptions import YClientsServerError
+from src.yclients.models import Client as YClient
+from src.yclients.models import Record, Service, Staff
 
 # ---------- хелперы ----------
 
@@ -257,7 +262,7 @@ async def test_about_replies_with_static_text() -> None:
     message.answer.assert_awaited_once_with(ABOUT_TEXT)
 
 
-@pytest.mark.parametrize("button", [MENU_BOOK, MENU_MY_BOOKINGS, MENU_PROFILE])
+@pytest.mark.parametrize("button", [MENU_BOOK, MENU_CANCEL])
 async def test_menu_stub_replies(button: str) -> None:
     message = make_message(text=button)
 
@@ -266,3 +271,123 @@ async def test_menu_stub_replies(button: str) -> None:
     message.answer.assert_awaited_once()
     args, _ = message.answer.call_args
     assert "🚧" in args[0] or "готовится" in args[0].lower()
+
+
+# ---------- profile ----------
+
+
+async def test_profile_shows_yclients_data() -> None:
+    message = make_message(text="👤 Мой профиль")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = User(
+        telegram_id=12345, full_name="Никита", yclients_client_id=285529314
+    )
+    yclients = AsyncMock()
+    yclients.get_client_by_id.return_value = YClient(
+        id=285529314,
+        name="Никита",
+        surname="Макаров",
+        display_name="Никита Макаров",
+        phone="+79991112233",
+        email="n@example.com",
+        visits=38,
+        balance=-3500,
+        spent=112350,
+        paid=108850,
+    )
+
+    await show_profile(message, user_service, yclients)
+
+    yclients.get_client_by_id.assert_awaited_once_with(285529314)
+    message.answer.assert_awaited_once()
+    text = message.answer.call_args.args[0]
+    assert "Никита Макаров" in text
+    assert "38" in text
+    assert "-3500" in text or "−3500" in text or "−3 500" in text or "-3 500" in text
+
+
+async def test_profile_when_user_not_registered() -> None:
+    message = make_message(text="👤 Мой профиль")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = None
+    yclients = AsyncMock()
+
+    await show_profile(message, user_service, yclients)
+
+    yclients.get_client_by_id.assert_not_called()
+    message.answer.assert_awaited_once()
+    assert "/start" in message.answer.call_args.args[0]
+
+
+async def test_profile_when_yclients_fails() -> None:
+    message = make_message(text="👤 Мой профиль")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = User(telegram_id=12345, yclients_client_id=999)
+    yclients = AsyncMock()
+    yclients.get_client_by_id.side_effect = YClientsServerError("YClients down")
+
+    await show_profile(message, user_service, yclients)
+
+    message.answer.assert_awaited_once()
+    assert "позже" in message.answer.call_args.args[0].lower()
+
+
+# ---------- my bookings ----------
+
+
+def _record(record_id: int, datetime_iso: str, service_title: str = "Тренировка") -> Record:
+    return Record(
+        id=record_id,
+        datetime=datetime_iso,
+        date=datetime_iso.split("T")[0] + " " + datetime_iso.split("T")[1][:8],
+        seance_length=3600,
+        services=[Service(id=1, title=service_title)],
+        staff=Staff(id=10, name="Влад"),
+        visit_attendance=0,
+    )
+
+
+async def test_my_bookings_when_empty() -> None:
+    message = make_message(text="📅 Мои занятия")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = User(telegram_id=12345, yclients_client_id=999)
+    yclients = AsyncMock()
+    yclients.get_client_records.return_value = []
+
+    await show_my_bookings(message, user_service, yclients)
+
+    # Одно сообщение «занятий нет», без карточек.
+    assert message.answer.await_count == 1
+    assert "нет" in message.answer.call_args.args[0].lower()
+
+
+async def test_my_bookings_filters_past_records() -> None:
+    """Записи с datetime в прошлом не показываем."""
+    message = make_message(text="📅 Мои занятия")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = User(telegram_id=12345, yclients_client_id=999)
+    yclients = AsyncMock()
+    yclients.get_client_records.return_value = [
+        _record(100, "2020-01-01T10:00:00+07:00"),  # давно прошло
+        _record(200, "2099-01-01T10:00:00+07:00"),  # точно в будущем
+    ]
+
+    await show_my_bookings(message, user_service, yclients)
+
+    # Должно быть: 1 «у тебя N занятий» + 1 карточка для будущей записи.
+    assert message.answer.await_count == 2
+    summary = message.answer.await_args_list[0].args[0]
+    assert "1" in summary  # одно занятие осталось после фильтрации
+
+
+async def test_my_bookings_when_user_not_registered() -> None:
+    message = make_message(text="📅 Мои занятия")
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = None
+    yclients = AsyncMock()
+
+    await show_my_bookings(message, user_service, yclients)
+
+    yclients.get_client_records.assert_not_called()
+    message.answer.assert_awaited_once()
+    assert "/start" in message.answer.call_args.args[0]

@@ -1,7 +1,7 @@
 {
   "project": "drum-school-bot",
   "last_updated": "2026-05-17",
-  "active_feature": null,
+  "active_feature": "profile-005",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -64,9 +64,21 @@
       "area": "bot",
       "title": "Регистрация ученика через FSM",
       "user_visible_behavior": "Новый пользователь после /start проходит ask_name → ask_phone, бот находит/создаёт клиента в YClients и привязывает telegram_id к yclients_client_id; повторный /start ведёт сразу в главное меню.",
-      "status": "blocked",
-      "blocker": "YClients возвращает 403 «Нет прав на управление филиалом с идентификатором 1058417» на GET /clients/1058417. Booking API (/book_services, /book_staff) работает, но Admin API (/clients) требует, чтобы системный пользователь приложения был ПРИВЯЗАН к филиалу через админку YClients школы (раздел «Интеграции/Приложения»). Альтернатива — переключиться на legacy-режим с YCLIENTS_USER_LOGIN/PASSWORD админа.",
-      "partial_progress": "Реализовано всё, кроме разблокировки YClients: UserService (search→create→upsert), FSM (waiting_for_name/phone), normalize_phone (+биас на РФ), handlers (/start с веткой существующий-новый, registration FSM, menu_stub), DepsMiddleware (AsyncSession + UserService на запрос), main.py с DI, главное меню и заглушки. Тесты — 36/36 зелёные, включая 11 новых на user_service и normalize_phone. Бот успешно прошёл путь до запроса в YClients: FSM работает, нормализация телефона работает, обработка ошибок показывает пользователю «YClients сейчас не отвечает».",
+      "status": "passing",
+      "evidence": [
+        "2026-05-17: UserService, FSM, normalize_phone, handlers, DepsMiddleware реализованы, 21 unit-тест зелёный.",
+        "2026-05-17: бот @DrumFamily_Tomsk_Bot реально провёл Никиту через регистрацию: /start → 'Никита' → +79119153381 (share-contact) → ответ 'Отлично, Никита! Ты зарегистрирован. 🥁' + главное меню (скриншот в чате сессии).",
+        "2026-05-17: в SQLite сохранилась корректная связка: telegram_id=677206331 ↔ yclients_client_id=285529314, full_name='Никита', phone='+79119153381'.",
+        "2026-05-17: в YClients new client НЕ создан (Никита уже был в базе как клиент Никита Макаров id 285529314, 38 посещений) — search_client нашёл, create пропустили.",
+        "2026-05-17: меню работает: 'О школе' выдаёт текст, остальные пункты — заглушки 'готовится' с описанием будущей функциональности."
+      ],
+      "fixed_along_the_way": [
+        "YClients /auth возвращает HTTP 201, а не 200 — клиент теперь принимает оба статуса (коммит 0e9f518).",
+        "YClients search по `phone=+79119153381` НЕ находит клиента; нужно `phone=79119153381` (без плюса). search_client теперь отрезает ведущий + перед запросом (коммит cd27d5f).",
+        "Изначально регистрация была заблокирована 403 на Admin API при использовании статического user_token — оказалось, что для частного бота под одну школу системного пользователя нельзя привязать к филиалу без публикации в маркетплейс. Перешли на legacy login/password — заработало."
+      ],
+      "notes": "Активный режим — legacy (YCLIENTS_USER_LOGIN + YCLIENTS_USER_PASSWORD в .env). YCLIENTS_USER_TOKEN закомментирован, но значение сохранено в .env на случай, если когда-то получится установить интеграцию через маркетплейс."
+    },
       "verification": [
         "В тестовой Telegram-сессии: новый пользователь — проходит FSM регистрации.",
         "В YClients появляется/находится клиент с указанным телефоном.",

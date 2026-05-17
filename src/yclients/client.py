@@ -37,6 +37,7 @@ from src.yclients.models import (
     BookRecordAppointment,
     BookRecordResponse,
     Client,
+    Record,
     Service,
     Slot,
     Staff,
@@ -175,9 +176,12 @@ class YClientsClient:
 
             status = response.status_code
 
-            # YClients отдаёт 200 для GET и часто 201 для POST (create).
-            # Оба значения — успех, возвращаем JSON.
-            if status in (200, 201):
+            # YClients отдаёт 200 для GET, 201 для POST (create), 204 для
+            # DELETE (no content). Всё это — успех. 204 не имеет тела, в этом
+            # случае возвращаем пустой dict.
+            if status in (200, 201, 204):
+                if not response.content:
+                    return {}
                 return response.json()
 
             if status == 401 and not already_refreshed and self._can_refresh_token:
@@ -390,6 +394,53 @@ class YClientsClient:
             params=params,
         )
         return [Slot.model_validate(item) for item in payload["data"]]
+
+    async def get_client_by_id(self, client_id: int) -> Client:
+        """GET /client/{company_id}/{client_id} — полная карточка клиента.
+
+        В отличие от `search_client` (фильтр по телефону), здесь возвращается
+        одиночный объект, а не массив. Удобно, когда у нас уже есть
+        `yclients_client_id` в SQLite после регистрации.
+        """
+        payload = await self._request(
+            "GET",
+            f"/client/{self._company_id}/{client_id}",
+        )
+        return Client.model_validate(payload["data"])
+
+    async def get_client_records(
+        self,
+        *,
+        client_id: int,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[Record]:
+        """GET /records/{company_id} — записи клиента.
+
+        - `start_date` / `end_date` — ISO `YYYY-MM-DD`, фильтр по дате занятия.
+          Без них вернутся все записи клиента (история + будущие).
+        - Возврат отсортирован по убыванию даты (свежие сверху) — проверено
+          на школе Drum Family.
+        """
+        params: dict[str, Any] = {"client_id": client_id}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        payload = await self._request(
+            "GET",
+            f"/records/{self._company_id}",
+            params=params,
+        )
+        return [Record.model_validate(item) for item in payload["data"]]
+
+    async def cancel_record(self, record_id: int) -> None:
+        """DELETE /records/{company_id}/{record_id} — отмена записи.
+
+        Endpoint админский, нужны соответствующие права у user_token.
+        Возврат — нет тела (204 No Content) или { success: True }.
+        """
+        await self._request("DELETE", f"/records/{self._company_id}/{record_id}")
 
     async def book_record(
         self,

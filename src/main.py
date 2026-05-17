@@ -16,7 +16,7 @@ from typing import Any
 import structlog
 from aiogram import Bot, Dispatcher
 
-from src.bot.handlers import commands, menu_stub, registration, start
+from src.bot.handlers import commands, menu_stub, my_bookings, profile, registration, start
 from src.bot.middlewares.deps import DepsMiddleware
 from src.config import Settings, get_settings
 from src.db.session import create_engine, create_session_factory, init_db
@@ -72,10 +72,14 @@ async def main() -> None:
     dp = Dispatcher()
     dp.update.middleware(DepsMiddleware(session_factory=session_factory, yclients=yclients))
     # Порядок важен: специфичные команды → /start → FSM регистрации →
-    # заглушки меню. Хочется, чтобы /cancel ловился ВНЕ FSM-фильтра.
+    # реальные обработчики меню → заглушки.
+    # Это даёт правильный приоритет: /cancel ловится ВНЕ FSM, реальные
+    # обработчики меню («Профиль», «Мои занятия») имеют приоритет над stubs.
     dp.include_router(commands.router)
     dp.include_router(start.router)
     dp.include_router(registration.router)
+    dp.include_router(profile.router)
+    dp.include_router(my_bookings.router)
     dp.include_router(menu_stub.router)
 
     log.info("bot.starting", company_id=settings.yclients_company_id)

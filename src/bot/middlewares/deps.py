@@ -44,4 +44,7 @@ class DepsMiddleware(BaseMiddleware):
         async with self._session_factory() as session:
             data["session"] = session
             data["user_service"] = UserService(session=session, yclients=self._yclients)
+            # YClients-клиент инжектится напрямую — обработчики, работающие с
+            # его данными в обход сервисов (профиль, мои занятия), используют его.
+            data["yclients"] = self._yclients
             return await handler(event, data)
