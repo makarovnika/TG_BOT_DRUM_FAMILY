@@ -15,6 +15,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiogram.fsm.state import State
 
+from src.bot.handlers.booking import (
+    booking_unrecognized,
+    cancel_booking,
+    picked_service,
+    picked_slot,
+    start_booking,
+)
 from src.bot.handlers.commands import cmd_cancel, cmd_help
 from src.bot.handlers.menu_stub import ABOUT_TEXT, about, cancel_stub
 from src.bot.handlers.my_bookings import show_my_bookings
@@ -28,6 +35,7 @@ from src.bot.handlers.registration import (
 )
 from src.bot.handlers.start import cmd_start
 from src.bot.keyboards.main_menu import MENU_CANCEL
+from src.bot.states.booking import BookingStates
 from src.bot.states.registration import RegistrationStates
 from src.db.models import User
 from src.yclients.exceptions import YClientsServerError
@@ -389,3 +397,133 @@ async def test_my_bookings_when_user_not_registered() -> None:
     yclients.get_client_records.assert_not_called()
     message.answer.assert_awaited_once()
     assert "/start" in message.answer.call_args.args[0]
+
+
+# ---------- booking FSM ----------
+
+
+def make_callback(*, data: str | None = None) -> MagicMock:
+    """Mock CallbackQuery с from_user, data, message, answer."""
+    cb = MagicMock()
+    cb.from_user = MagicMock(id=12345)
+    cb.data = data
+    cb.message = MagicMock()
+    cb.message.edit_text = AsyncMock()
+    cb.message.edit_reply_markup = AsyncMock()
+    cb.message.answer = AsyncMock()
+    cb.answer = AsyncMock()
+    return cb
+
+
+async def test_start_booking_for_new_user_redirects_to_registration() -> None:
+    message = make_message(text="🥁 Записаться")
+    state = make_state()
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = None
+    yclients = AsyncMock()
+
+    await start_booking(message, state, user_service, yclients)
+
+    yclients.get_services.assert_not_called()
+    state.set_state.assert_not_called()
+    message.answer.assert_awaited_once()
+    assert "/start" in message.answer.call_args.args[0]
+
+
+async def test_start_booking_for_registered_user_sets_state_and_caches_services() -> None:
+    message = make_message(text="🥁 Записаться")
+    state = make_state()
+    user_service = AsyncMock()
+    user_service.find_by_telegram_id.return_value = User(telegram_id=12345, yclients_client_id=42)
+    yclients = AsyncMock()
+    yclients.get_services.return_value = [
+        Service(id=111, title="Услуга один"),
+        Service(id=222, title="Услуга два"),
+    ]
+
+    await start_booking(message, state, user_service, yclients)
+
+    state.clear.assert_awaited_once()  # очистили любой предыдущий FSM
+    state.set_state.assert_awaited_once_with(BookingStates.choosing_service)
+    # Кэш услуг положен в FSM data — пригодится в picked_service
+    state.update_data.assert_awaited_once_with(
+        services_cache={111: "Услуга один", 222: "Услуга два"}
+    )
+    message.answer.assert_awaited_once()
+
+
+async def test_picked_service_uses_cache_and_advances_to_staff() -> None:
+    """Не должен повторно вызывать get_services — берёт название из кэша."""
+    callback = make_callback(data="bk_svc:111")
+    state = make_state(BookingStates.choosing_service)
+    state.get_data.return_value = {"services_cache": {111: "Услуга один"}}
+    yclients = AsyncMock()
+    yclients.get_staff.return_value = [Staff(id=10, name="Влад")]
+
+    await picked_service(callback, state, yclients)
+
+    # services НЕ дёргаем — это и есть смысл #6 (кэш)
+    yclients.get_services.assert_not_called()
+    yclients.get_staff.assert_awaited_once_with(service_ids=[111])
+    state.set_state.assert_awaited_once_with(BookingStates.choosing_staff)
+    # service_id и staff_cache попали в FSM data
+    call = state.update_data.await_args_list[0]
+    assert call.kwargs["service_id"] == 111
+    assert call.kwargs["service_title"] == "Услуга один"
+    assert call.kwargs["staff_cache"] == {10: "Влад"}
+
+
+async def test_picked_service_unknown_id_aborts() -> None:
+    """Если callback пришёл с устаревшим service_id (нет в кэше) — выходим."""
+    callback = make_callback(data="bk_svc:999")
+    state = make_state(BookingStates.choosing_service)
+    state.get_data.return_value = {"services_cache": {111: "Старая услуга"}}
+    yclients = AsyncMock()
+
+    await picked_service(callback, state, yclients)
+
+    yclients.get_staff.assert_not_called()
+    state.clear.assert_awaited_once()
+    callback.answer.assert_awaited_once()
+
+
+async def test_picked_slot_shows_summary() -> None:
+    callback = make_callback(data="bk_sl:2099-05-20T10:00:00+07:00")
+    state = make_state(BookingStates.choosing_slot)
+    state.get_data.return_value = {
+        "service_title": "Персональная",
+        "staff_name": "Влад",
+    }
+
+    await picked_slot(callback, state)
+
+    state.set_state.assert_awaited_once_with(BookingStates.confirming)
+    state.update_data.assert_awaited_once_with(slot_datetime="2099-05-20T10:00:00+07:00")
+    callback.message.edit_text.assert_awaited_once()
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Персональная" in text
+    assert "Влад" in text
+    assert "20.05.2099" in text  # отформатированная дата
+    assert "10:00" in text
+
+
+async def test_cancel_booking_clears_state_and_shows_menu() -> None:
+    callback = make_callback(data="bk_cancel")
+    state = make_state(BookingStates.choosing_service)
+
+    await cancel_booking(callback, state)
+
+    state.clear.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
+    # после отмены отправляется новое сообщение «Что дальше?» с main_menu_kb
+    callback.message.answer.assert_awaited_once()
+
+
+async def test_booking_unrecognized_replies_with_hint() -> None:
+    """В любом состоянии FSM на не-кнопочное сообщение — подсказка."""
+    message = make_message(text="произвольный текст")
+
+    await booking_unrecognized(message)
+
+    message.answer.assert_awaited_once()
+    assert "/cancel" in message.answer.call_args.args[0]

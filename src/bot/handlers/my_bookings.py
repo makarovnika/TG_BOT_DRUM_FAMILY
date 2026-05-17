@@ -21,12 +21,13 @@ from aiogram.types import CallbackQuery, Message
 
 from src.bot.keyboards.bookings import (
     CANCEL_CONFIRM_PREFIX,
-    CANCEL_DECLINE,
+    CANCEL_DECLINE_PREFIX,
     CANCEL_PREFIX,
     cancel_button,
     cancel_confirm_keyboard,
 )
 from src.bot.keyboards.main_menu import MENU_MY_BOOKINGS
+from src.bot.utils import escape_html
 from src.services.user_service import UserService
 from src.yclients.client import YClientsClient
 from src.yclients.exceptions import YClientsError
@@ -79,8 +80,7 @@ async def show_my_bookings(
 
     if not future:
         await message.answer(
-            "📅 На ближайшие 2 месяца записей нет.\n\n"
-            "Запиши себя через «🥁 Записаться» (скоро будет работать)."
+            "📅 На ближайшие 2 месяца записей нет.\n\nЗапиши себя через «🥁 Записаться»."
         )
         return
 
@@ -105,7 +105,7 @@ async def show_my_bookings(
 @router.callback_query(F.data.startswith(f"{CANCEL_PREFIX}:"))
 async def confirm_cancel(callback: CallbackQuery) -> None:
     """Первый клик «Отменить» → подтверждение."""
-    if callback.data is None:
+    if callback.data is None or callback.message is None:
         await callback.answer()
         return
     record_id = int(callback.data.split(":", 1)[1])
@@ -113,13 +113,18 @@ async def confirm_cancel(callback: CallbackQuery) -> None:
     await callback.answer("Точно отменить?")
 
 
-@router.callback_query(F.data == CANCEL_DECLINE)
+@router.callback_query(F.data.startswith(f"{CANCEL_DECLINE_PREFIX}:"))
 async def cancel_declined(callback: CallbackQuery) -> None:
-    """«Нет, оставить» → возвращаем исходную кнопку «Отменить»."""
-    # Парсим record_id из текста сообщения — у нас нет в callback_data;
-    # проще снова достать его из исходного «Отменить»-кейлборда не получится
-    # после редактирования. Поэтому просто убираем все кнопки.
-    await callback.message.edit_reply_markup(reply_markup=None)
+    """«Нет, оставить» → возвращаем исходную кнопку «Отменить».
+
+    record_id берём из callback_data: после отказа пользователь должен
+    иметь возможность снова отменить эту же запись.
+    """
+    if callback.data is None or callback.message is None:
+        await callback.answer()
+        return
+    record_id = int(callback.data.split(":", 1)[1])
+    await callback.message.edit_reply_markup(reply_markup=cancel_button(record_id))
     await callback.answer("Окей, оставил запись")
 
 
@@ -129,7 +134,7 @@ async def do_cancel(
     yclients: YClientsClient,
 ) -> None:
     """«Да, отменить» → реально дёргаем YClients."""
-    if callback.data is None:
+    if callback.data is None or callback.message is None:
         await callback.answer()
         return
     record_id = int(callback.data.split(":", 1)[1])
@@ -141,14 +146,16 @@ async def do_cancel(
         await callback.answer("Не получилось отменить. Попробуй позже.", show_alert=True)
         return
 
+    # `html_text` сохраняет HTML-разметку оригинального сообщения; если его
+    # нет (например, сообщение было без parse_mode) — fall back на plain text.
+    original = callback.message.html_text or callback.message.text or ""
     try:
         await callback.message.edit_text(
-            (callback.message.html_text or callback.message.text or "")
-            + "\n\n<b>❌ Запись отменена.</b>",
+            original + "\n\n<b>❌ Запись отменена.</b>",
             parse_mode="HTML",
         )
     except TelegramBadRequest:
-        # Если сообщение нельзя редактировать (старое, например) — отправим новое.
+        # Сообщение могло устареть или быть удалено — отправим новое.
         await callback.message.answer("Запись отменена.")
 
     await callback.answer("Отменено")
@@ -159,7 +166,7 @@ def _format_record(r: Record) -> str:
     when = _format_datetime(r)
     services = ", ".join(s.title for s in r.services) or "Занятие"
     staff = r.staff.name if r.staff else "Любой тренер"
-    return f"🥁 <b>{_escape(services)}</b>\n👤 {_escape(staff)}\n🕐 {when}"
+    return f"🥁 <b>{escape_html(services)}</b>\n👤 {escape_html(staff)}\n🕐 {when}"
 
 
 def _format_datetime(r: Record) -> str:
@@ -193,7 +200,3 @@ def _hours_until(r: Record, now: datetime) -> float | None:
     except ValueError:
         return None
     return (dt - now).total_seconds() / 3600
-
-
-def _escape(value: str) -> str:
-    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

@@ -18,9 +18,11 @@ from aiogram import F, Router
 from aiogram.types import Message
 
 from src.bot.keyboards.main_menu import MENU_PROFILE
+from src.bot.utils import escape_html
 from src.services.user_service import UserService
 from src.yclients.client import YClientsClient
 from src.yclients.exceptions import YClientsError
+from src.yclients.models import Client
 
 log = structlog.get_logger("handlers.profile")
 
@@ -60,18 +62,18 @@ async def show_profile(
     await message.answer(_format_profile(client), parse_mode="HTML")
 
 
-def _format_profile(c) -> str:
+def _format_profile(c: Client) -> str:
     """Собирает человекочитаемый профиль с минимумом нюансов.
 
     Используем HTML вместо Markdown, потому что в именах/email могут быть
     спецсимволы (`_`, `*`), которые Markdown ломают.
     """
     name = c.display_name or c.name
-    parts = [f"<b>👤 {_escape(name)}</b>"]
+    parts = [f"<b>👤 {escape_html(name)}</b>"]
     parts.append("")
-    parts.append(f"📞 Телефон: <code>{_escape(c.phone)}</code>")
+    parts.append(f"📞 Телефон: <code>{escape_html(c.phone)}</code>")
     if c.email:
-        parts.append(f"✉️ Email: <code>{_escape(c.email)}</code>")
+        parts.append(f"✉️ Email: <code>{escape_html(c.email)}</code>")
     parts.append("")
 
     if c.visits is not None:
@@ -90,10 +92,3 @@ def _format_profile(c) -> str:
         parts.append(f"\n<i>Всего в школе: оплачено {c.paid} ₽ из {c.spent} ₽ начислений</i>")
 
     return "\n".join(parts)
-
-
-def _escape(value: str | None) -> str:
-    """Минимальный HTML-escape (Telegram принимает только <, >, &)."""
-    if value is None:
-        return ""
-    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

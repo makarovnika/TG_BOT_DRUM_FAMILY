@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 CANCEL_PREFIX = "cancel"
 CANCEL_CONFIRM_PREFIX = "cancel_confirm"
-CANCEL_DECLINE = "cancel_decline"
+CANCEL_DECLINE_PREFIX = "cancel_decline"
 
 
 def cancel_button(record_id: int) -> InlineKeyboardMarkup:
@@ -31,7 +31,11 @@ def cancel_button(record_id: int) -> InlineKeyboardMarkup:
 
 
 def cancel_confirm_keyboard(record_id: int) -> InlineKeyboardMarkup:
-    """Подтверждение отмены — две кнопки «Да, отменить» / «Нет, оставить»."""
+    """Подтверждение отмены — две кнопки «Да, отменить» / «Нет, оставить».
+
+    «Нет, оставить» несёт в callback_data record_id — чтобы при отказе
+    можно было вернуть исходную кнопку «Отменить», а не убирать её насовсем.
+    """
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -41,7 +45,7 @@ def cancel_confirm_keyboard(record_id: int) -> InlineKeyboardMarkup:
                 ),
                 InlineKeyboardButton(
                     text="↩️ Нет, оставить",
-                    callback_data=CANCEL_DECLINE,
+                    callback_data=f"{CANCEL_DECLINE_PREFIX}:{record_id}",
                 ),
             ]
         ]
