@@ -297,9 +297,21 @@ class YClientsClient:
         services = data["services"] if isinstance(data, dict) else data
         return [Service.model_validate(item) for item in services]
 
-    async def get_staff(self) -> list[Staff]:
-        """GET /book_staff/{company_id} — список преподавателей."""
-        payload = await self._request("GET", f"/book_staff/{self._company_id}")
+    async def get_staff(self, *, service_ids: list[int] | None = None) -> list[Staff]:
+        """GET /book_staff/{company_id} — список преподавателей.
+
+        - без `service_ids` → все сотрудники (включая админов/аренду);
+        - с `service_ids` → только те, кто оказывает указанные услуги
+          (нужно, чтобы в UI не показывать админов как «тренеров»).
+        """
+        params: dict[str, Any] = {}
+        if service_ids:
+            params["service_ids[]"] = service_ids
+        payload = await self._request(
+            "GET",
+            f"/book_staff/{self._company_id}",
+            params=params,
+        )
         return [Staff.model_validate(item) for item in payload["data"]]
 
     async def search_client(self, phone: str) -> Client | None:

@@ -1,0 +1,334 @@
+"""FSM записи на индивидуальное занятие.
+
+Шаги:
+1. Кнопка «🥁 Записаться» → choosing_service.
+   Бот тянет get_services(), показывает inline-список.
+2. Клик service:N → choosing_staff.
+   Бот тянет get_staff(service_ids=[N]) (только релевантные тренеры), показывает.
+3. Клик staff:M → choosing_date.
+   Бот тянет get_book_dates(staff_id=M, service_ids=[N], 14 дней вперёд).
+4. Клик date:YYYY-MM-DD → choosing_slot.
+   Бот тянет get_book_times(staff_id=M, date, service_ids=[N]).
+5. Клик slot:ISO_DT → confirming.
+   Бот показывает summary с кнопками «✅ Записаться» / «↩️ Отмена».
+6. Клик confirm:yes → book_record(...).
+   Если YClients требует SMS-подтверждение — это не покрыто, увидим
+   при первой реальной записи (открытый вопрос).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import structlog
+from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
+from src.bot.keyboards.booking import (
+    CANCEL_DATA,
+    CONFIRM_PREFIX,
+    DATE_PREFIX,
+    SERVICE_PREFIX,
+    SLOT_PREFIX,
+    STAFF_PREFIX,
+    confirm_keyboard,
+    dates_keyboard,
+    services_keyboard,
+    slots_keyboard,
+    staff_keyboard,
+)
+from src.bot.keyboards.main_menu import MENU_BOOK, main_menu_kb
+from src.bot.states.booking import BookingStates
+from src.services.user_service import UserService
+from src.yclients.client import YClientsClient
+from src.yclients.exceptions import YClientsError
+from src.yclients.models import BookRecordAppointment
+
+log = structlog.get_logger("handlers.booking")
+
+router = Router(name="booking")
+
+TOMSK_TZ = timezone(timedelta(hours=7))
+BOOK_HORIZON_DAYS = 14
+
+
+@router.message(F.text == MENU_BOOK)
+async def start_booking(
+    message: Message,
+    state: FSMContext,
+    user_service: UserService,
+    yclients: YClientsClient,
+) -> None:
+    """Точка входа FSM записи."""
+    if message.from_user is None:
+        return
+
+    user = await user_service.find_by_telegram_id(message.from_user.id)
+    if user is None or user.yclients_client_id is None:
+        await message.answer("Сначала пройди регистрацию — отправь /start.")
+        return
+
+    await state.clear()
+
+    try:
+        services = await yclients.get_services()
+    except YClientsError as exc:
+        log.warning("booking.services_error", error=str(exc))
+        await message.answer("Не получилось загрузить список услуг. Попробуй позже.")
+        return
+
+    if not services:
+        await message.answer("Сейчас нет доступных услуг для записи.")
+        return
+
+    await state.set_state(BookingStates.choosing_service)
+    await message.answer(
+        "🥁 На какую услугу записываемся?",
+        reply_markup=services_keyboard([(s.id, s.title) for s in services]),
+    )
+
+
+@router.callback_query(BookingStates.choosing_service, F.data.startswith(f"{SERVICE_PREFIX}:"))
+async def picked_service(
+    callback: CallbackQuery,
+    state: FSMContext,
+    yclients: YClientsClient,
+) -> None:
+    service_id = int(callback.data.split(":", 1)[1])
+
+    # Чтобы показать название услуги в summary — заранее тянем все услуги
+    # и ищем по id. Это лишний вызов API; можно было бы кэшировать.
+    services = await yclients.get_services()
+    service = next((s for s in services if s.id == service_id), None)
+    if service is None:
+        await callback.answer("Услуга не найдена. Начни заново.", show_alert=True)
+        await state.clear()
+        return
+
+    await state.update_data(service_id=service.id, service_title=service.title)
+
+    try:
+        staff = await yclients.get_staff(service_ids=[service.id])
+    except YClientsError as exc:
+        log.warning("booking.staff_error", error=str(exc))
+        await callback.answer("Не получилось загрузить тренеров. Попробуй позже.", show_alert=True)
+        await state.clear()
+        return
+
+    if not staff:
+        await callback.message.edit_text("Нет тренеров для этой услуги.")
+        await state.clear()
+        await callback.answer()
+        return
+
+    await state.set_state(BookingStates.choosing_staff)
+    await callback.message.edit_text(
+        f"Услуга: <b>{_escape(service.title)}</b>\n\nС каким тренером?",
+        parse_mode="HTML",
+        reply_markup=staff_keyboard([(m.id, m.name) for m in staff]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.choosing_staff, F.data.startswith(f"{STAFF_PREFIX}:"))
+async def picked_staff(
+    callback: CallbackQuery,
+    state: FSMContext,
+    yclients: YClientsClient,
+) -> None:
+    staff_id = int(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+    service_id = data["service_id"]
+
+    staff_list = await yclients.get_staff(service_ids=[service_id])
+    staff = next((s for s in staff_list if s.id == staff_id), None)
+    if staff is None:
+        await callback.answer("Тренер не найден. Начни заново.", show_alert=True)
+        await state.clear()
+        return
+
+    await state.update_data(staff_id=staff.id, staff_name=staff.name)
+
+    today = datetime.now(tz=TOMSK_TZ).date()
+    horizon = today + timedelta(days=BOOK_HORIZON_DAYS)
+    try:
+        dates = await yclients.get_book_dates(
+            staff_id=staff.id,
+            service_ids=[service_id],
+            date_from=today.isoformat(),
+            date_to=horizon.isoformat(),
+        )
+    except YClientsError as exc:
+        log.warning("booking.dates_error", error=str(exc))
+        await callback.answer("Не получилось загрузить даты. Попробуй позже.", show_alert=True)
+        await state.clear()
+        return
+
+    if not dates.booking_dates:
+        await callback.message.edit_text(
+            f"Услуга: <b>{_escape(data['service_title'])}</b>\n"
+            f"Тренер: <b>{_escape(staff.name)}</b>\n\n"
+            f"Свободных дат на ближайшие {BOOK_HORIZON_DAYS} дней нет. "
+            "Загляни позже.",
+            parse_mode="HTML",
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    await state.set_state(BookingStates.choosing_date)
+    await callback.message.edit_text(
+        f"Услуга: <b>{_escape(data['service_title'])}</b>\n"
+        f"Тренер: <b>{_escape(staff.name)}</b>\n\n"
+        "Выбери дату:",
+        parse_mode="HTML",
+        reply_markup=dates_keyboard(dates.booking_dates),
+    )
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.choosing_date, F.data.startswith(f"{DATE_PREFIX}:"))
+async def picked_date(
+    callback: CallbackQuery,
+    state: FSMContext,
+    yclients: YClientsClient,
+) -> None:
+    date_iso = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    service_id = data["service_id"]
+    staff_id = data["staff_id"]
+
+    try:
+        slots = await yclients.get_book_times(
+            staff_id=staff_id,
+            date=date_iso,
+            service_ids=[service_id],
+        )
+    except YClientsError as exc:
+        log.warning("booking.slots_error", error=str(exc))
+        await callback.answer("Не получилось загрузить слоты. Попробуй позже.", show_alert=True)
+        await state.clear()
+        return
+
+    if not slots:
+        await callback.answer("На эту дату свободных слотов не осталось.", show_alert=True)
+        return
+
+    await state.update_data(date=date_iso)
+    await state.set_state(BookingStates.choosing_slot)
+
+    slot_pairs = [(s.time or "—", s.datetime or "") for s in slots if s.datetime]
+
+    await callback.message.edit_text(
+        f"Услуга: <b>{_escape(data['service_title'])}</b>\n"
+        f"Тренер: <b>{_escape(data['staff_name'])}</b>\n"
+        f"Дата: <b>{date_iso}</b>\n\n"
+        "Выбери время:",
+        parse_mode="HTML",
+        reply_markup=slots_keyboard(slot_pairs),
+    )
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.choosing_slot, F.data.startswith(f"{SLOT_PREFIX}:"))
+async def picked_slot(callback: CallbackQuery, state: FSMContext) -> None:
+    slot_iso = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+
+    await state.update_data(slot_datetime=slot_iso)
+    await state.set_state(BookingStates.confirming)
+
+    # Парсим datetime для красивого отображения
+    pretty_time = _format_iso(slot_iso)
+
+    await callback.message.edit_text(
+        "Проверь, всё ли правильно:\n\n"
+        f"🥁 <b>{_escape(data['service_title'])}</b>\n"
+        f"👤 {_escape(data['staff_name'])}\n"
+        f"🕐 {pretty_time}\n\n"
+        "Записываемся?",
+        parse_mode="HTML",
+        reply_markup=confirm_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.confirming, F.data == f"{CONFIRM_PREFIX}:yes")
+async def confirm_booking(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_service: UserService,
+    yclients: YClientsClient,
+) -> None:
+    data = await state.get_data()
+
+    if callback.from_user is None:
+        return
+    user = await user_service.find_by_telegram_id(callback.from_user.id)
+    if user is None or user.full_name is None or user.phone is None:
+        await callback.answer("Профиль неполный. Сделай /start.", show_alert=True)
+        await state.clear()
+        return
+
+    appointment = BookRecordAppointment(
+        id=1,
+        services=[data["service_id"]],
+        staff_id=data["staff_id"],
+        datetime=data["slot_datetime"],
+    )
+
+    try:
+        result = await yclients.book_record(
+            phone=user.phone,
+            fullname=user.full_name,
+            appointments=[appointment],
+        )
+    except YClientsError as exc:
+        log.warning("booking.book_error", error=str(exc))
+        # 422 «уже занято», SMS-required и т. п. — показываем человекочитаемо.
+        await callback.message.edit_text(
+            f"Не получилось записать: {exc}.\n\nПопробуй другой слот или напиши админу."
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    record_id = result[0].id if result else None
+    log.info("booking.created", record_id=record_id, telegram_id=user.telegram_id)
+
+    pretty_time = _format_iso(data["slot_datetime"])
+    await callback.message.edit_text(
+        "✅ Записал!\n\n"
+        f"🥁 <b>{_escape(data['service_title'])}</b>\n"
+        f"👤 {_escape(data['staff_name'])}\n"
+        f"🕐 {pretty_time}\n\n"
+        "До встречи в школе! Список записей — в «📅 Мои занятия».",
+        parse_mode="HTML",
+    )
+    await state.clear()
+    await callback.answer("Записано")
+    # Возвращаем главное меню следующим сообщением
+    await callback.message.answer("Что дальше?", reply_markup=main_menu_kb())
+
+
+@router.callback_query(F.data == CANCEL_DATA)
+async def cancel_booking(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Отмена» на любом шаге FSM."""
+    await state.clear()
+    await callback.message.edit_text("Окей, запись отменена.")
+    await callback.message.answer("Что дальше?", reply_markup=main_menu_kb())
+    await callback.answer()
+
+
+def _format_iso(iso: str) -> str:
+    """ISO с tz → 'DD.MM.YYYY, HH:MM' в локальной TZ Томска."""
+    try:
+        dt = datetime.fromisoformat(iso)
+        return dt.astimezone(TOMSK_TZ).strftime("%d.%m.%Y, %H:%M")
+    except ValueError:
+        return iso
+
+
+def _escape(value: str) -> str:
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

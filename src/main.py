@@ -16,7 +16,15 @@ from typing import Any
 import structlog
 from aiogram import Bot, Dispatcher
 
-from src.bot.handlers import commands, menu_stub, my_bookings, profile, registration, start
+from src.bot.handlers import (
+    booking,
+    commands,
+    menu_stub,
+    my_bookings,
+    profile,
+    registration,
+    start,
+)
 from src.bot.middlewares.deps import DepsMiddleware
 from src.config import Settings, get_settings
 from src.db.session import create_engine, create_session_factory, init_db
@@ -80,6 +88,7 @@ async def main() -> None:
     dp.include_router(registration.router)
     dp.include_router(profile.router)
     dp.include_router(my_bookings.router)
+    dp.include_router(booking.router)
     dp.include_router(menu_stub.router)
 
     log.info("bot.starting", company_id=settings.yclients_company_id)

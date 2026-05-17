@@ -13,11 +13,10 @@ UserService. Не поднимаем aiogram Dispatcher и не симулиру
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from aiogram.fsm.state import State
 
 from src.bot.handlers.commands import cmd_cancel, cmd_help
-from src.bot.handlers.menu_stub import ABOUT_TEXT, about, stub
+from src.bot.handlers.menu_stub import ABOUT_TEXT, about, cancel_stub
 from src.bot.handlers.my_bookings import show_my_bookings
 from src.bot.handlers.profile import show_profile
 from src.bot.handlers.registration import (
@@ -28,7 +27,7 @@ from src.bot.handlers.registration import (
     phone_not_recognized,
 )
 from src.bot.handlers.start import cmd_start
-from src.bot.keyboards.main_menu import MENU_BOOK, MENU_CANCEL
+from src.bot.keyboards.main_menu import MENU_CANCEL
 from src.bot.states.registration import RegistrationStates
 from src.db.models import User
 from src.yclients.exceptions import YClientsServerError
@@ -262,11 +261,10 @@ async def test_about_replies_with_static_text() -> None:
     message.answer.assert_awaited_once_with(ABOUT_TEXT)
 
 
-@pytest.mark.parametrize("button", [MENU_BOOK, MENU_CANCEL])
-async def test_menu_stub_replies(button: str) -> None:
-    message = make_message(text=button)
+async def test_cancel_menu_stub_replies() -> None:
+    message = make_message(text=MENU_CANCEL)
 
-    await stub(message)
+    await cancel_stub(message)
 
     message.answer.assert_awaited_once()
     args, _ = message.answer.call_args
