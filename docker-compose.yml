@@ -1,0 +1,42 @@
+# docker-compose.yml для drum-school-bot.
+#
+# Использование на VPS:
+#   git clone <repo>; cd <repo>
+#   cp .env.example .env; vi .env   # заполнить токены
+#   docker compose up -d
+#   docker compose logs -f bot
+#
+# Перезапуск после правки кода:
+#   git pull && docker compose up -d --build
+#
+# Что важно:
+# - .env передаётся внутрь как переменные окружения (env_file), а не копируется в образ;
+# - bot.db лежит на хосте в ./data/, чтобы переживала пересборку контейнера;
+# - restart: unless-stopped — после reboot VPS бот стартует сам.
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drum-school-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # SQLite-файл будет здесь, внутри volume — переживёт пересборку.
+      DATABASE_URL: sqlite+aiosqlite:////app/data/bot.db
+    volumes:
+      - ./data:/app/data
+    # На случай проблем — лимиты, чтобы бот не уронил VPS:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    # Структурированные JSON-логи structlog → docker logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

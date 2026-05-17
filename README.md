@@ -82,7 +82,52 @@ git config core.hooksPath .githooks
 
 ## Деплой на VPS
 
-Будет добавлен на этапе фичи `deploy-007`. Базовая идея — `docker compose up -d`.
+### Требования к серверу
+
+- Linux (Ubuntu 22.04+ / Debian 12+ / любой другой с systemd);
+- Docker и Docker Compose (`curl -fsSL https://get.docker.com | sh`);
+- Открытый исходящий HTTPS (для Telegram и YClients).
+
+### Запуск
+
+```sh
+# 1. Клонируем
+git clone <repo-url> drum-school-bot
+cd drum-school-bot
+
+# 2. Заполняем .env (BOT_TOKEN, YClients-токены, COMPANY_ID)
+cp .env.example .env
+nano .env
+
+# 3. Создаём папку под SQLite-файл (он переживёт пересборку контейнера)
+mkdir -p data
+
+# 4. Запускаем
+docker compose up -d --build
+
+# 5. Смотрим логи
+docker compose logs -f bot
+```
+
+После reboot VPS бот стартует сам (`restart: unless-stopped`).
+
+### Обновление кода
+
+```sh
+git pull
+docker compose up -d --build
+```
+
+### Бэкап БД
+
+Файл `data/bot.db` — единственное состояние на стороне сервера (источник правды
+по записям — YClients, у нас только маппинг `telegram_id ↔ yclients_client_id`).
+Достаточно периодически копировать его:
+
+```sh
+# Например, cron-job раз в сутки:
+cp data/bot.db /backup/bot-$(date +%F).db
+```
 
 ## Лицензия
 

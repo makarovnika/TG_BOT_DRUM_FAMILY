@@ -1,0 +1,51 @@
+# Что НЕ нужно класть в build-контекст Docker — он отправляется демону,
+# и от его размера зависит скорость сборки.
+
+# Виртуальные окружения и кэши
+.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+*.pyc
+
+# Локальная БД
+*.db
+*.sqlite
+*.sqlite3
+
+# Секреты — никогда в образ, только через volume/secrets
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+.githooks/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Документация шаблона (Docker не нужны)
+AGENTS.md
+CLAUDE.md
+claude-progress.md
+clean-state-checklist.md
+evaluator-rubric.md
+feature_list.json
+quality-document.md
+session-handoff.md
+
+# Тесты не нужны в проде
+tests/
+
+# Сборка
+build/
+dist/
+*.egg-info/
+
+# Логи
+*.log

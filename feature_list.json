@@ -144,6 +144,7 @@
       "title": "Деплой на VPS через Docker",
       "user_visible_behavior": "Бот круглосуточно работает на VPS после `docker compose up -d`.",
       "status": "not_started",
+      "partial_progress": "Dockerfile (multi-stage: builder с uv → runtime без uv, под непривилегированным пользователем) + docker-compose.yml (volume для data/bot.db, restart: unless-stopped, лимиты CPU/память, json-file логи с ротацией) + .dockerignore (исключает .env, .venv, tests, кэши, документацию шаблона) + раздел README с инструкцией по деплою и бэкапу. Не проверено локально (Docker не установлен у Никиты на Mac), будет проверено прямо на VPS.",
       "verification": [
         "На чистой VPS: git clone, заполнить .env, docker compose up -d.",
         "Бот отвечает на /start.",
