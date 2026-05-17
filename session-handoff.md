@@ -1,59 +1,135 @@
-# Session Handoff
+# Session Handoff (2026-05-18)
 
-## Verified Now
+## Состояние сейчас
 
-- `./init.sh` зелёный: 25 тестов проходят, ruff чист.
-- Telegram-бот @DrumFamily_Tomsk_Bot отвечает на `/start`.
-- YClients-клиент работает **против реального API** школы Drum Family Томск:
-  - 4 услуги, 6 преподавателей подгружаются через `uv run python -m src.yclients.smoke_test`;
-  - режим — статический User Token (`YCLIENTS_USER_TOKEN` в `.env`),
-    partner_token — `YCLIENTS_PARTNER_TOKEN`.
-- Pre-commit hook гоняет ruff + tests перед каждым коммитом.
-- Git: 5 коммитов на `main`.
+```
+setup-000              ████████████████  passing
+yclients-001           ████████████████  passing
+registration-002       ████████████████  passing
+profile-005            ████████████████  passing
+my-bookings-004        █████████████░░░  in_progress (UI ОК, реальная отмена не проверена)
+booking-individual-003 ███████████████░  in_progress (UI ОК, реальная запись с email-фиксом не проверена)
+booking-group-006      ░░░░░░░░░░░░░░░░  not_started
+deploy-007             ████░░░░░░░░░░░░  partial (Docker готов, на VPS не разворачивали)
+```
 
-## Changed This Session (Session 005)
+- Git: 20 коммитов на `main`, последний `209419c` (email fix).
+- Tests: **83 зелёных**.
+- Бот: **остановлен**. Запуск — `RUN_START_COMMAND=1 ./init.sh`.
 
-- Поддержка статического User Token в `YClientsClient` (коммит `a99df69`).
-- 5 новых тестов на статический режим (итого 25).
-- Smoke против реального API прошёл, `yclients-001` → `passing`.
-- `active_feature` → `registration-002`.
+## Где живёт правда
 
-## Broken Or Unverified
+- БД: `bot.db` (SQLite). Сейчас содержит ровно одну запись:
+  `telegram_id=677206331 ↔ yclients_client_id=285529314, Никита, +79119153381`.
+- YClients: школа Drum Family Томск (company_id=1058417), 4 услуги
+  (Пробный, Персональная, Персональная со старшим, Аренда), 6 преподавателей.
+- Режим аутентификации YClients: **legacy** (login/password в `.env`,
+  `YCLIENTS_USER_TOKEN` закомментирован).
 
-- Known defect: нет.
-- Unverified path: бизнес-логика регистрации (FSM, поиск/создание клиента
-  в YClients, привязка `telegram_id` ↔ `yclients_client_id`).
-- Risk for the next session:
-  - вопрос про SMS-подтверждение `book_record` всё ещё открыт (нужен к
-    `booking-individual-003`, не блокирует фичу 2);
-  - в реальных ответах YClients у услуг `duration=0` — некритично, но при
-    показе расписания нужно будет проверить, есть ли длительность где-то ещё.
+## Что закрыто из открытых вопросов
 
-## Next Best Step
+| Вопрос | Резолв |
+|--------|--------|
+| SMS-подтверждение `book_record`? | НЕ требуется. Подтверждено 2026-05-17 23:49. |
+| Что нужно для `book_record`? | Школа требует email клиента. Резолв там же. |
+| Какой формат поля `booking_days`? | Dict `{месяц: [дни]}`, не плоский list (зафиксировано в модели). |
+| Какой формат phone для search_client? | Без `+`, только digits. |
+| `/auth` возвращает 200 или 201? | 201 Created (нестандартно, фикс в коде). |
 
-- **Активная фича:** `registration-002` (Регистрация ученика через FSM).
-- **План реализации:**
-  1. `src/services/user_service.py` — обёртка над DB + YClients-клиентом:
-     `get_or_register(telegram_id, name, phone)` → ищет User в SQLite,
-     если нет — ищет в YClients по phone, если нет — создаёт в YClients,
-     сохраняет связку в SQLite.
-  2. `src/bot/states/registration.py` — FSM-состояния `WaitingForName`,
-     `WaitingForPhone`.
-  3. `src/bot/handlers/start.py` — `/start`: если есть в SQLite → главное
-     меню, иначе → FSM регистрации.
-  4. `src/bot/handlers/registration.py` — обработчики FSM.
-  5. `src/bot/keyboards/main_menu.py` — Reply-клавиатура главного меню.
-  6. `src/main.py` — подключить DI: `YClientsClient` + сессии БД в middleware.
-  7. Тесты: unit на `user_service` с моками, интеграционный путь FSM.
-- **Что считать passing:** новый пользователь после /start проходит
-  ask_name → ask_phone, в YClients появляется/находится клиент с этим
-  телефоном, в SQLite появляется User с привязкой; повторный /start ведёт
-  сразу в главное меню без повторного ask.
+## Что ОСТАЁТСЯ открытым
 
-## Commands
+1. **Реальная запись через бота не подтверждена.** Email-фикс готов
+   (коммит `209419c`), но проверка отложена.
+2. **Реальная отмена записи не проверена.** Endpoint
+   `DELETE /records/{cid}/{record_id}` выбран по аналогии REST — может
+   потребоваться `PUT /records/{cid}/{id}` с `attendance=-1` или
+   `/user/records/{id}/{hash}`. Узнаем при первой реальной отмене.
+3. **Длительность услуг** — у Drum Family `duration=0` в карточке услуги.
+   Сейчас слоты приходят с `seance_length=3600` (1 ч), это используем.
+   Если школа добавит дополнительные услуги с другой длительностью,
+   надо проверить, что бот корректно покажет.
+4. **Абонементы** — endpoint `/loyalty/abonements/{cid}` отдаёт 404. Не
+   разобрались, какой endpoint у этой школы. Профиль пока без раздела
+   «Абонементы». Можно спросить у поддержки YClients либо у школы — есть
+   ли вообще абонементы в их модели.
 
-- Startup: `./init.sh`
-- Verification: `uv run pytest -q` и `uv run ruff check src tests`
-- Запустить бота локально: `RUN_START_COMMAND=1 ./init.sh`
-- Smoke против реального YClients: `uv run python -m src.yclients.smoke_test`
-- Если `uv` не виден в новой сессии: `export PATH="$HOME/.local/bin:$PATH"`
+## План на следующую сессию
+
+### Приоритет 1 — закрыть `booking-individual-003` (5 минут)
+
+1. Запустить бота: `RUN_START_COMMAND=1 ./init.sh` (или просто `uv run python -m src.main`).
+2. В Telegram: «🥁 Записаться» → выбрать **отдалённый слот** (через
+   неделю-две, не сегодня) → «✅ Записаться».
+3. Если успех: запись должна появиться в:
+   - ответе бота («✅ Записал!»),
+   - «📅 Мои занятия» в боте,
+   - админке YClients школы.
+4. **После успешной записи**: перевести `booking-individual-003` →
+   `passing`, заполнить `evidence/booking-individual-003.md`.
+
+### Приоритет 2 — закрыть `my-bookings-004` (2 минуты)
+
+5. В Telegram: «📅 Мои занятия» → найти только что созданную запись →
+   «❌ Отменить» → «✅ Да, отменить».
+6. Если успех: запись пропадает из «Мои занятия» и из админки YClients.
+7. Если 404/405 (`DELETE` endpoint неправильный): сменить на
+   `PUT /records/{cid}/{id}` с `attendance=-1` или попробовать
+   `/user/records/{id}/{hash}` (нужен `hash`, его можно сохранять
+   при создании записи).
+8. **После успешной отмены**: `my-bookings-004` → `passing`.
+
+### Приоритет 3 — что-то одно из:
+
+**(A) `booking-group-006`** — групповые занятия через `/activity/*`.
+Это аналог 003, но другой набор endpoint'ов:
+- `GET /activity/search/{cid}` — список групповых событий с фильтром
+  по дате.
+- `POST /activity/{activity_id}/book/{cid}` — запись на группу.
+
+Не проверял, есть ли у школы Drum Family групповые события в YClients.
+Если нет — фича бесполезна, лучше пропустить.
+
+**(B) `deploy-007`** — реальный деплой на VPS:
+- купить VPS (DigitalOcean, Hetzner, Timeweb — ~5-10 $/мес),
+- установить Docker (`curl -fsSL https://get.docker.com | sh`),
+- залить репо (либо через `git clone` если будет remote, либо просто
+  через `scp`/`rsync`),
+- запустить `docker compose up -d`.
+
+Понадобится: домен или просто IP VPS (бот не нуждается в публичном URL,
+работает через polling).
+
+### Приоритет 4 (не блокирующий) — настроить GitHub remote и пушить
+
+Сейчас 20 коммитов лежат только на твоём Mac. Если диск откажет — всё
+потеряется. Создать `private`-репо на github.com, прописать remote,
+`git push -u origin main` — 5 минут защиты от катастрофы.
+
+## Команды-памятка
+
+```sh
+# Запуск бота
+RUN_START_COMMAND=1 ./init.sh
+
+# Только тесты
+uv run pytest -q
+
+# Smoke против реального YClients API (read-only)
+uv run python -m src.yclients.smoke_test
+
+# Если uv не виден в свежем терминале
+export PATH="$HOME/.local/bin:$PATH"
+
+# История коммитов
+git log --oneline
+```
+
+## Что есть в `evidence/`
+
+- `setup-000.md` — рубрика 12/12.
+- `yclients-001.md` — рубрика 11/12.
+- `registration-002.md` — рубрика 11/12.
+- `profile-005.md` — рубрика 12/12.
+
+`booking-individual-003.md` и `my-bookings-004.md` появятся после
+успешного интерактивного теста.

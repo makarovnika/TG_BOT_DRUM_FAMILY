@@ -18,29 +18,47 @@
 
 | Домен | Оценка | Верификация | Понятность для агента | Стабильность тестов | Ключевые пробелы | Last Updated |
 |-------|--------|-------------|----------------------|---------------------|------------------|--------------|
-| Регистрация ученика | C | unit (18 тестов handlers + 7 user_service + 7 normalize_phone) | высокая | стабильны | заблокировано 403 на /clients в YClients (не код); нет интеграционного теста на полный FSM-flow | 2026-05-17 |
-| Запись на индивидуальное | D | — | нет кода | нет тестов | весь домен; открытый вопрос по SMS-подтверждению YClients | 2026-05-17 |
-| Запись на групповое | D | — | нет кода | нет тестов | весь домен | 2026-05-17 |
-| Мои занятия + отмена | D | — | нет кода | нет тестов | весь домен; правило 24 ч | 2026-05-17 |
-| Профиль и абонементы | D | — | нет кода | нет тестов | весь домен; нет UI для редактирования имени/телефона | 2026-05-17 |
+| Регистрация ученика | A | unit + интеграционная проверка в Telegram | высокая | стабильны | — | 2026-05-18 |
+| Запись на индивидуальное | B | unit (7 booking handlers), интеграция UI пройдена | высокая | стабильны | реальная запись с email-фиксом НЕ проверена; duration=0 у услуг | 2026-05-18 |
+| Запись на групповое | D | — | нет кода | нет тестов | весь домен; не понятно, использует ли школа `/activity/*` | 2026-05-18 |
+| Мои занятия + отмена | B | unit (3 теста) + просмотр списка проверен | высокая | стабильны | реальная отмена через DELETE НЕ проверена | 2026-05-18 |
+| Профиль | A | unit (3 теста) + интеграционная проверка в Telegram (38 посещений, баланс −3500 ₽) | высокая | стабильны | абонементы (404 на /loyalty/abonements) | 2026-05-18 |
 
 ## Architectural Layers
 
 | Слой | Оценка | Соблюдение границ | Понятность для агента | Ключевые пробелы | Last Updated |
 |------|--------|-------------------|----------------------|------------------|--------------|
-| Bot entry (`src/main.py`) | B | DI через middleware, корректное закрытие ресурсов в finally | высокая | нет тестов на сам main (трудно тестировать) | 2026-05-17 |
-| Bot handlers (`src/bot/handlers/`) | B | роутеры разделены (start, registration, commands, menu_stub); FSM catch-all закрывает «зависание»; 18 unit-тестов | высокая | нет интеграционных тестов (порядок include_router, фильтры F.text) | 2026-05-17 |
-| FSM states (`src/bot/states/`) | A | один StatesGroup, минимум, понятен | высокая | — | 2026-05-17 |
-| YClients client (`src/yclients/`) | A | 2 режима auth (static/legacy), retry/refresh, 25 тестов на моках, smoke против реального Booking API прошёл | высокая | Admin API (/clients) проверен только до 403 — pydantic-модели для Client не верифицированы реальным ответом | 2026-05-17 |
-| DB layer (`src/db/`) | A | User-модель + async-сессия + 6 тестов CRUD на in-memory SQLite | высокая | нет миграций (Alembic); схема меняется через recreate | 2026-05-17 |
-| Services (`src/services/`) | B | UserService (search→create→upsert) + normalize_phone + 11 тестов | высокая | сервис коммитит сам внутри register() — не unit-of-work; нет тестов на ошибочные ветки YClients | 2026-05-17 |
-| Middlewares (`src/bot/middlewares/`) | A | DepsMiddleware + 3 теста (инжекция, реальный SELECT, проброс exception) | высокая | — | 2026-05-17 |
-| Конфиг (`src/config.py`) | A | pydantic-settings, ленивый `get_settings()`, `extra="forbid"` ловит опечатки | высокая | не покрыт тестами (значения env обычно мокаются, не сам Settings) | 2026-05-17 |
-| Harness (init.sh + tests/) | A | стандартный, зелёный, 60 тестов | высокая | — | 2026-05-17 |
-| Git hooks (`.githooks/`) | A | pre-commit с ruff + format-check + pytest, активен | высокая | — | 2026-05-17 |
-| Docker (Dockerfile + compose) | C | multi-stage, healthcheck, лимиты, volume для bot.db | высокая | НЕ проверено локально (Docker не установлен у Никиты) — деплой на VPS будет первым реальным запуском | 2026-05-17 |
+| Bot entry (`src/main.py`) | B | DI через middleware, корректное закрытие ресурсов в finally | высокая | нет тестов на сам main (трудно тестировать) | 2026-05-18 |
+| Bot handlers (`src/bot/handlers/`) | A | 8 router'ов (start, registration, commands, profile, my_bookings, booking, menu_stub) + catch-all'ы + 30+ unit-тестов | высокая | нет интеграционных тестов (порядок include_router, фильтры F.text) | 2026-05-18 |
+| FSM states (`src/bot/states/`) | A | 2 StatesGroup (registration, booking), минимум, понятны | высокая | — | 2026-05-18 |
+| YClients client (`src/yclients/`) | A | 2 режима auth, retry/refresh, 32 теста на моках, smoke против реального API прошёл; Booking + Admin API; book_record с email уточнён | высокая | DELETE-endpoint отмены не проверен на реальной записи; абонементы 404 | 2026-05-18 |
+| DB layer (`src/db/`) | A | User-модель + async-сессия + 6 тестов CRUD на in-memory SQLite | высокая | нет миграций (Alembic); схема меняется через recreate | 2026-05-18 |
+| Services (`src/services/`) | B | UserService + normalize_phone + 14 тестов | высокая | сервис коммитит сам внутри register() — не unit-of-work; нет тестов на ошибочные ветки YClients | 2026-05-18 |
+| Middlewares (`src/bot/middlewares/`) | A | DepsMiddleware + 3 теста (инжекция, реальный SELECT, проброс exception); инжектит yclients-клиент напрямую | высокая | — | 2026-05-18 |
+| Конфиг (`src/config.py`) | A | pydantic-settings, ленивый `get_settings()`, `extra="forbid"` ловит опечатки | высокая | не покрыт тестами (значения env обычно мокаются, не сам Settings) | 2026-05-18 |
+| Harness (init.sh + tests/) | A | стандартный, зелёный, 83 теста | высокая | — | 2026-05-18 |
+| Git hooks (`.githooks/`) | A | pre-commit с ruff + format-check + pytest, активен | высокая | — | 2026-05-18 |
+| Docker (Dockerfile + compose) | C | multi-stage, healthcheck, лимиты, volume для bot.db, .python-version=3.11 | высокая | НЕ проверено локально — деплой на VPS будет первым реальным запуском | 2026-05-18 |
+| Utils (`src/bot/utils.py`) | A | общий escape_html, убраны 3 дубликата | высокая | — | 2026-05-18 |
 
 ## Change History
+
+### 2026-05-18 — Sessions 007–008 (закрытие 3 фич + крупный заход на 003)
+
+- Changes: registration-002, profile-005 закрыты в `passing`;
+  my-bookings-004 и booking-individual-003 в `in_progress` с почти
+  готовым кодом, но без подтверждения реального write в YClients.
+- Domains promoted: Регистрация D→A, Профиль D→A, Мои занятия D→B,
+  Запись на индивидуальное D→B.
+- Domains demoted: —
+- New gaps identified:
+  - YClients требует email для `book_record` (резолвится фиксом
+    `209419c` — берём email из карточки клиента);
+  - DELETE-endpoint отмены записи не проверен на реальной записи;
+  - duration услуг = 0, длительность берём из seance_length слота.
+- Gaps closed:
+  - SMS-подтверждение `book_record` — закрыто, не требуется;
+  - 403 на Admin API — закрыто переходом на legacy login/password.
 
 ### 2026-05-17 (поздний вечер) — Session 005
 

@@ -6,17 +6,88 @@
 - Standard startup path: `./init.sh`
 - Standard verification path: `uv run pytest -q` + `uv run ruff check src tests`
   (внутри `./init.sh`), плюс `pre-commit` hook в `.githooks/pre-commit`.
-- Git: ветка `main`, 10 коммитов (последний — `23ab4e6`).
-- Tests: 60 зелёных (smoke, db, yclients-client, user_service, handlers, middleware).
-- Last passing feature: `yclients-001` — клиент работает против реального
-  Booking API школы Drum Family Томск (4 услуги, 6 преподавателей).
-- Current highest-priority unfinished feature: `registration-002`.
-- Current blocker: 403 от Admin API YClients на `/clients/1058417`.
-  Решение — переключиться на legacy login/password (см. session-handoff.md).
-- Known open question: SMS-подтверждение `book_record` (нужно к `booking-individual-003`,
-  не блокирует фичу 2).
+- Git: ветка `main`, 20 коммитов (последний — `209419c`).
+- Tests: **83 зелёных** (smoke, db, yclients-client, user_service, handlers, middleware, booking).
+- Passing features (4 из 8 MVP): `setup-000`, `yclients-001`, `registration-002`, `profile-005`.
+- In-progress: `booking-individual-003` (UI готов, реальная запись с email-фиксом
+  не проверена), `my-bookings-004` (UI готов, реальная отмена не проверена).
+- Not started: `booking-group-006` (групповые занятия).
+- Partial: `deploy-007` (Docker готов, на VPS не разворачивали).
+- Закрытые открытые вопросы:
+  - SMS-подтверждение `book_record` НЕ требуется (резолв 2026-05-17 23:49).
+  - Email обязателен в `book_record` для Drum Family (резолв 2026-05-17 23:49).
+- Оставшиеся открытые вопросы:
+  - DELETE-endpoint отмены записи (`/records/{cid}/{id}`) не проверен на реальной записи.
+  - У услуг школы `duration=0` — не понятно, откуда брать длительность.
+  - У школы нет рабочего endpoint'а абонементов (`/loyalty/abonements` → 404).
 
 ## Session Log
+
+### Session 008 — booking-individual-003 в почти passing (2026-05-17→18)
+
+- Goal: реализовать FSM записи на занятие + закрыть оставшиеся пункты
+  предыдущего аудита.
+- Completed:
+  - **FSM записи**: src/bot/states/booking.py (5 состояний), keyboards/booking.py
+    (inline-клавиатуры с локализованными датами), handlers/booking.py
+    (entry + 4 шага FSM + confirm + cancel + catch-all). Услуги/тренеры
+    кэшируются в FSM-data (закрытие пункта #6 предыдущего аудита).
+  - **YClientsClient.get_staff(service_ids=...)**: добавлен фильтр,
+    чтобы показывать только релевантных тренеров (не админов/аренду).
+  - **Новый аудит (8 пунктов)**: общий escape_html в utils.py, типизация
+    `Client`, /help без «(скоро будет)», cancel_declined восстанавливает
+    кнопку, catch-all в booking FSM, None-checks для callback.message и
+    callback.data, +7 тестов на booking handlers. Коммит `9719103`.
+  - **Реальный тест записи в Telegram (2026-05-17 23:49)**:
+    YClients вернул 422 «Не передан обязательный параметр email».
+    SMS-подтверждение НЕ требуется (это и есть резолв открытого вопроса
+    #14). Email обязателен.
+  - **Реальный тест UI (Вариант A, 2026-05-18 00:03)**: флоу
+    услуга→тренер→дата→слот→summary→«↩️ Отмена» работает, никакой
+    записи в YClients не создаётся.
+  - **Фикс email**: confirm_booking тянет get_client_by_id перед
+    book_record и передаёт email из карточки YClients (коммит `209419c`).
+- Verification run:
+  - `uv run pytest -q` — 83 passed (76 → 83);
+  - Реальный flow в Telegram пройден для всех шагов кроме финального
+    «✅ Записаться с email-фиксом».
+- Files / commits:
+  - новые: `src/bot/states/booking.py`, `src/bot/keyboards/booking.py`,
+    `src/bot/handlers/booking.py`, `src/bot/utils.py`,
+    `evidence/profile-005.md`;
+  - коммиты: `f901fdc` (booking FSM), `9719103` (новый аудит), `209419c`
+    (email fix).
+- Known risk / unresolved:
+  - **`booking-individual-003` НЕ закрыта в passing** — реальная запись
+    с email-фиксом не проверена. Остановились перед интерактивным тестом
+    по решению Никиты.
+  - **`my-bookings-004` тоже не закрыта** — UI работает, но реальная
+    отмена через DELETE /records/{cid}/{id} не проверена. Если endpoint
+    окажется неправильным, бот покажет «Не получилось отменить» (обработка
+    есть).
+- Next best step (см. session-handoff.md):
+  1. Запустить бота, пройти полный booking-флоу до «✅ Записаться» —
+     убедиться, что запись создаётся в YClients.
+  2. Затем «📅 Мои занятия» → найти эту новую запись → отменить через
+     бота. Проверим оба сценария за один тест.
+
+### Session 007 — registration passing + profile + my-bookings (2026-05-17)
+
+- Goal: закрыть registration-002 и сразу сделать profile-005, my-bookings-004.
+- Completed:
+  - registration-002 → `passing` (Никита прошёл /start → имя → телефон →
+    «Отлично, ты зарегистрирован» + меню; в SQLite сохранилась корректная
+    связка telegram_id ↔ yclients_client_id);
+  - profile-005 → `passing` (Никита нажал «Мой профиль», получил карточку
+    с реальными данными: 38 посещений, баланс −3500 ₽);
+  - my-bookings-004 → in_progress (UI готов, реальная отмена не проверена);
+  - попутно расширены Client и Record модели на основе реальных
+    YClients-ответов (поля surname, display_name, visits, spent, paid,
+    balance, datetime/length у Record);
+  - DepsMiddleware инжектит yclients-клиент напрямую (раньше только через
+    UserService);
+  - 60 → 77 тестов.
+- Files / commits: `c257a73` (registration close + profile + my-bookings).
 
 ### Session 006 — критический аудит + точечные фиксы (2026-05-17)
 
