@@ -43,23 +43,37 @@ class YClientsClient:
         self,
         *,
         partner_token: str,
-        user_login: str,
-        user_password: str,
         company_id: int,
+        user_token: str | None = None,
+        user_login: str | None = None,
+        user_password: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
         backoff_base: float = 1.0,
     ) -> None:
-        """Параметры:
+        """Два режима аутентификации:
 
-        - `partner_token`: постоянный, с developers.yclients.com.
-        - `user_login` / `user_password`: учётка админа YClients.
+        - **Статический user_token** (рекомендуется): передай `user_token`
+          (например, токен системного пользователя из «Доступ к API»).
+          Тогда /auth никогда не вызывается, а на 401 сразу бросается
+          YClientsAuthError (программно его не починить).
+        - **Логин/пароль**: передай `user_login` + `user_password`. Клиент
+          сам сделает POST /auth и будет автоматически перевыпускать токен
+          при 401.
+
+        Параметры:
+        - `partner_token`: постоянный, с developers.yclients.com («Общая информация»).
         - `company_id`: ID филиала.
         - `timeout`: на один HTTP-запрос.
-        - `max_retries`: общее число попыток (включая первую) на 429/5xx/401.
-        - `backoff_base`: множитель для `asyncio.sleep(backoff_base * 2**attempt)`.
+        - `max_retries`: общее число попыток на 429/5xx (для 401 — отдельно).
+        - `backoff_base`: множитель `asyncio.sleep(backoff_base * 2**attempt)`.
           В тестах ставим 0, чтобы не спать по-настоящему.
         """
+        if not user_token and not (user_login and user_password):
+            raise ValueError(
+                "YClientsClient: нужен либо user_token, либо пара user_login + user_password"
+            )
+
         self._partner_token = partner_token
         self._user_login = user_login
         self._user_password = user_password
@@ -67,10 +81,16 @@ class YClientsClient:
         self._max_retries = max_retries
         self._backoff_base = backoff_base
 
-        self._user_token: str | None = None
+        # Если передан статический user_token — сразу кладём его, /auth не нужен.
+        self._user_token: str | None = user_token
         self._http = httpx.AsyncClient(base_url=BASE_URL, timeout=timeout)
         # Защищает от гонки: два корутины не должны одновременно дёргать /auth.
         self._auth_lock = asyncio.Lock()
+
+    @property
+    def _can_refresh_token(self) -> bool:
+        """True, если у нас есть логин/пароль и можем сделать POST /auth."""
+        return bool(self._user_login and self._user_password)
 
     @property
     def company_id(self) -> int:
@@ -146,7 +166,7 @@ class YClientsClient:
             if status == 200:
                 return response.json()
 
-            if status == 401 and auth_retries_left > 0:
+            if status == 401 and auth_retries_left > 0 and self._can_refresh_token:
                 auth_retries_left -= 1
                 log.info("yclients.user_token_expired", refreshing=True)
                 self._user_token = None
@@ -154,8 +174,10 @@ class YClientsClient:
                 continue  # повтор без увеличения attempt — это не "ретрай"
 
             if status == 401:
+                # Либо нет логина/пароля (статический режим), либо refresh
+                # уже пробовали и снова получили 401 — программно не починить.
                 raise YClientsAuthError(
-                    "401 после refresh — логин/пароль или партнёрский токен невалидны",
+                    "401 от YClients — user_token невалиден или нет нужных прав",
                     status_code=401,
                     payload=_safe_json(response),
                 )
@@ -192,10 +214,19 @@ class YClientsClient:
         raise last_exception
 
     async def _ensure_authed(self) -> None:
-        """Идемпотентно: если токена нет — получает; иначе ничего не делает."""
+        """Идемпотентно: если токена нет — получает; иначе ничего не делает.
+
+        В статическом режиме (user_token задан при создании) сюда мы попадаем
+        только если кто-то вручную сбросил self._user_token — и тогда без
+        логина/пароля идти на /auth бессмысленно: бросаем YClientsAuthError.
+        """
         async with self._auth_lock:
             if self._user_token is not None:
                 return
+            if not self._can_refresh_token:
+                raise YClientsAuthError(
+                    "user_token пуст и нет логина/пароля для refresh — нечего делать"
+                )
             await self._auth_locked()
 
     async def _auth_locked(self) -> None:
@@ -218,7 +249,13 @@ class YClientsClient:
     # ---------- публичное API ----------
 
     async def auth(self) -> str:
-        """Получает user_token принудительно (даже если уже есть)."""
+        """Получает user_token принудительно (даже если уже есть).
+
+        В статическом режиме (user_token задан при создании, но нет
+        логина/пароля) бросает YClientsAuthError — обновлять нечем.
+        """
+        if not self._can_refresh_token:
+            raise YClientsAuthError("auth() недоступен в статическом режиме (нет логина/пароля)")
         async with self._auth_lock:
             self._user_token = None
             await self._auth_locked()

@@ -22,17 +22,35 @@ async def main() -> None:
     if not s.yclients_partner_token:
         raise SystemExit(
             "В .env пустой YCLIENTS_PARTNER_TOKEN — некуда стучаться. "
-            "Сначала получи партнёрский токен на developers.yclients.com."
+            "Сначала получи партнёрский токен на developers.yclients.com "
+            "(вкладка «Общая информация»)."
+        )
+
+    # Выбираем режим аутентификации по тому, что есть в .env.
+    if s.yclients_user_token:
+        print("==> mode: статический User Token (из «Доступ к API»)")
+        client_kwargs = {"user_token": s.yclients_user_token}
+    elif s.yclients_user_login and s.yclients_user_password:
+        print("==> mode: логин/пароль админа (POST /auth)")
+        client_kwargs = {
+            "user_login": s.yclients_user_login,
+            "user_password": s.yclients_user_password,
+        }
+    else:
+        raise SystemExit(
+            "В .env нет ни YCLIENTS_USER_TOKEN, ни пары YCLIENTS_USER_LOGIN + "
+            "YCLIENTS_USER_PASSWORD. Заполни одно из двух."
         )
 
     async with YClientsClient(
         partner_token=s.yclients_partner_token,
-        user_login=s.yclients_user_login,
-        user_password=s.yclients_user_password,
         company_id=s.yclients_company_id,
+        **client_kwargs,
     ) as yc:
-        await yc.auth()
-        print("==> auth OK")
+        # auth() имеет смысл только в legacy-режиме; для статического — пропускаем.
+        if s.yclients_user_login:
+            await yc.auth()
+            print("==> auth OK")
 
         services = await yc.get_services()
         print(f"\n==> services ({len(services)}):")

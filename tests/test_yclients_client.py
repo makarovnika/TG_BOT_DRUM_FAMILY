@@ -30,11 +30,25 @@ from src.yclients.exceptions import (
 
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[YClientsClient, None]:
-    """Свежий клиент на каждый тест. backoff_base=0 — без реальных sleep."""
+    """Legacy-режим: логин/пароль → POST /auth → динамический user_token."""
     c = YClientsClient(
         partner_token="partner_test",
         user_login="login@test",
         user_password="password",
+        company_id=12345,
+        max_retries=3,
+        backoff_base=0,
+    )
+    yield c
+    await c.close()
+
+
+@pytest_asyncio.fixture
+async def static_client() -> AsyncGenerator[YClientsClient, None]:
+    """Новый режим: статический User Token из «Доступ к API»."""
+    c = YClientsClient(
+        partner_token="partner_test",
+        user_token="static_xyz",
         company_id=12345,
         max_retries=3,
         backoff_base=0,
@@ -291,3 +305,68 @@ async def test_request_includes_both_tokens_in_authorization(client: YClientsCli
 
     assert captured["Authorization"] == "Bearer partner_test, User USR123"
     assert captured["Accept"] == "application/vnd.api.v2+json"
+
+
+# ---------- static user_token mode ----------
+
+
+async def test_static_token_skips_auth_call(static_client: YClientsClient) -> None:
+    """В статическом режиме /auth никогда не дёргается.
+
+    `/auth` не регистрируем намеренно — если клиент его всё-таки дёрнет,
+    respx упадёт с «no matching route», и тест честно покажет ошибку.
+    """
+    ok = httpx.Response(
+        200,
+        json={"success": True, "data": {"services": [{"id": 1, "title": "X"}]}, "meta": []},
+    )
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/book_services/12345").mock(return_value=ok)
+
+        services = await static_client.get_services()
+
+        assert len(services) == 1
+        assert services[0].title == "X"
+
+
+async def test_static_token_authorization_header(static_client: YClientsClient) -> None:
+    """Статический токен попадает в заголовок ровно как `User {value}`."""
+    captured: dict[str, str] = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["Authorization"] = request.headers.get("Authorization", "")
+        return httpx.Response(200, json={"success": True, "data": {"services": []}, "meta": []})
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/book_services/12345").mock(side_effect=capture)
+        await static_client.get_services()
+
+    assert captured["Authorization"] == "Bearer partner_test, User static_xyz"
+
+
+async def test_static_token_401_raises_without_refresh(static_client: YClientsClient) -> None:
+    """В статическом режиме 401 сразу бросает YClientsAuthError — нечем рефрешить.
+
+    `/auth` не регистрируем — если клиент попробует туда сходить (что было бы
+    багом в статическом режиме), respx покажет это «no matching route».
+    """
+    with respx.mock(base_url=BASE_URL) as mock:
+        services_route = mock.get("/book_services/12345").mock(return_value=httpx.Response(401))
+
+        with pytest.raises(YClientsAuthError):
+            await static_client.get_services()
+
+        # services дёрнулся ровно один раз — никаких ретраев на 401 в статическом режиме.
+        assert services_route.call_count == 1
+
+
+async def test_auth_method_fails_in_static_mode(static_client: YClientsClient) -> None:
+    """`auth()` имеет смысл только при наличии логина/пароля."""
+    with pytest.raises(YClientsAuthError):
+        await static_client.auth()
+
+
+async def test_constructor_raises_without_any_credentials() -> None:
+    """Без user_token и без логина/пароля — ValueError на этапе создания."""
+    with pytest.raises(ValueError, match="user_token"):
+        YClientsClient(partner_token="x", company_id=1)

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
 
     # YClients — на этапе setup-000 ещё пустые, заполнятся к фиче yclients-001
     yclients_partner_token: str = ""
+    # User token — два режима. Если указан yclients_user_token (статический
+    # системный пользователь) — он имеет приоритет; иначе клиент будет получать
+    # user_token через /auth по логину/паролю.
+    yclients_user_token: str = ""
     yclients_user_login: str = ""
     yclients_user_password: str = ""
     yclients_company_id: int = 0
