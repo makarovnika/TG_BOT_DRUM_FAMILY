@@ -290,6 +290,34 @@ async def confirm_booking(
         await state.clear()
         return
 
+    # YClients школы Drum Family требует email при создании записи (422
+    # «Не передан обязательный параметр email»). В нашей SQLite email
+    # не хранится, поэтому тянем актуальный из YClients-карточки клиента.
+    # Если в YClients email тоже не заполнен — попросим админа добавить.
+    if user.yclients_client_id is None:
+        await callback.answer("Профиль не привязан к YClients. Сделай /start.", show_alert=True)
+        await state.clear()
+        return
+    try:
+        yc_client = await yclients.get_client_by_id(user.yclients_client_id)
+    except YClientsError as exc:
+        log.warning("booking.get_client_error", error=str(exc))
+        await callback.message.edit_text(
+            "Не получилось проверить твою карточку в YClients. Попробуй позже."
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    if not yc_client.email:
+        await callback.message.edit_text(
+            "❌ В твоей карточке в YClients не указан email — школа требует "
+            "его для онлайн-записи. Попроси админа добавить email и попробуй снова."
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
     appointment = BookRecordAppointment(
         id=1,
         services=[data["service_id"]],
@@ -301,6 +329,7 @@ async def confirm_booking(
         result = await yclients.book_record(
             phone=user.phone,
             fullname=user.full_name,
+            email=yc_client.email,
             appointments=[appointment],
         )
     except YClientsError as exc:
