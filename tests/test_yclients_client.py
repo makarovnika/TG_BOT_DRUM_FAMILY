@@ -174,6 +174,24 @@ async def test_search_client_returns_first_match(client: YClientsClient) -> None
         assert c.name == "Иван Петров"
 
 
+async def test_search_client_strips_leading_plus(client: YClientsClient) -> None:
+    """YClients ищет по `digits` без плюса. Контракт: передаём `+...`,
+    клиент сам отрезает `+` перед отправкой query-параметра."""
+    captured_query: dict[str, str] = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured_query["phone"] = request.url.params.get("phone", "")
+        return httpx.Response(200, json={"success": True, "data": [], "meta": []})
+
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.post("/auth").mock(return_value=_auth_ok())
+        mock.get("/clients/12345").mock(side_effect=capture)
+
+        await client.search_client(phone="+79991112233")
+
+    assert captured_query["phone"] == "79991112233"  # без плюса
+
+
 async def test_search_client_returns_none_when_empty(client: YClientsClient) -> None:
     with respx.mock(base_url=BASE_URL) as mock:
         mock.post("/auth").mock(return_value=_auth_ok())

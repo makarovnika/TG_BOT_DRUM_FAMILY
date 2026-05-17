@@ -302,12 +302,20 @@ class YClientsClient:
         """GET /clients/{company_id} с фильтром по телефону.
 
         Возвращает первого найденного клиента или None. Если совпадений несколько,
-        предполагаем что нам важен любой (телефон в YClients обычно уникален).
+        предполагаем, что нам важен любой (телефон в YClients обычно уникален).
+
+        ВАЖНО про формат: YClients хранит телефоны в каноническом виде
+        `+79991234567` (с плюсом), но search-параметр `phone` подбирает по
+        точному совпадению digits без плюса. Эмпирически проверено на школе:
+            phone=+79119153381 → 0 совпадений
+            phone=79119153381  → 1 совпадение (тот же клиент)
+        Поэтому здесь отрезаем ведущий `+`, если он есть.
         """
+        query_phone = phone.lstrip("+")
         payload = await self._request(
             "GET",
             f"/clients/{self._company_id}",
-            params={"phone": phone},
+            params={"phone": query_phone},
         )
         clients = payload["data"]
         if not clients:
