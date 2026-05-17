@@ -125,3 +125,21 @@ async def _finalize(
         f"Отлично, {name}! Ты зарегистрирован. 🥁\n\nВыбери, что хочешь сделать.",
         reply_markup=main_menu_kb(),
     )
+
+
+# Catch-all обработчики для не-текстовых сообщений в FSM. Регистрируются
+# ПОСЛЕДНИМИ — aiogram идёт по handler'ам в порядке регистрации, и эти
+# срабатывают только если предыдущие F.text/F.contact не подошли. Без них
+# пользователь застревал бы в FSM, если бы прислал стикер/фото/голос.
+
+
+@router.message(RegistrationStates.waiting_for_name)
+async def name_not_text(message: Message) -> None:
+    await message.answer("Пришли имя обычным текстом, пожалуйста.")
+
+
+@router.message(RegistrationStates.waiting_for_phone)
+async def phone_not_recognized(message: Message) -> None:
+    await message.answer(
+        "Нужен номер телефона. Нажми «Поделиться номером» или впиши вручную в формате +79991234567."
+    )
