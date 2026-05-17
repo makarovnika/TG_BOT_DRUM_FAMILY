@@ -44,15 +44,19 @@
       "title": "Async-клиент YClients API",
       "user_visible_behavior": "Внутренний клиент умеет авторизоваться и читать справочники (услуги, преподаватели, поиск клиента).",
       "status": "blocked",
-      "blocker": "Ждём партнёрский токен YClients (заявка подаётся на developers.yclients.com, рассмотрение несколько дней). До получения токена нельзя начинать реализацию и тестировать через respx-моки настоящие endpoints.",
+      "blocker": "Ждём партнёрский токен YClients (заявка на developers.yclients.com). До получения токена нельзя прогнать src.yclients.smoke_test против реального API. ~80% кода фичи готово на моках, осталась только финальная проверка соответствия моделей реальным ответам.",
       "verification": [
         "uv run python -m src.yclients.smoke_test выводит список услуг и преподавателей школы.",
         "uv run pytest tests/test_yclients_client.py -q — все тесты с respx-моками зелёные.",
         "Покрыты методы auth(), get_services(), get_staff(), search_client(), create_client().",
         "401 → перевыпуск user_token; 429 → retry с backoff; 5xx → 3 попытки."
       ],
-      "evidence": [],
-      "notes": "Pydantic-модели в src/yclients/models.py. Никаких походов в реальный API из тестов."
+      "evidence": [
+        "2026-05-17: src/yclients/client.py — YClientsClient с retry/refresh реализован.",
+        "2026-05-17: tests/test_yclients_client.py — 13 тестов на respx-моках, все зелёные.",
+        "2026-05-17: 4 из 4 пунктов verification закрыты КРОМЕ smoke_test против реального API (требует партнёрского токена)."
+      ],
+      "notes": "Pydantic-модели в src/yclients/models.py написаны по документации без проверки против реального API. После получения токена прогнать smoke_test, могут понадобиться правки полей."
     },
     {
       "id": "registration-002",
@@ -61,6 +65,7 @@
       "title": "Регистрация ученика через FSM",
       "user_visible_behavior": "Новый пользователь после /start проходит ask_name → ask_phone, бот находит/создаёт клиента в YClients и привязывает telegram_id к yclients_client_id; повторный /start ведёт сразу в главное меню.",
       "status": "not_started",
+      "partial_progress": "DB-слой (User-модель, фабрика async-сессий, init_db) и тесты CRUD готовы в src/db/ — 6 тестов зелёных. Осталось: FSM-состояния, обработчики, сервис user_service.py с интеграцией YClients-клиента.",
       "verification": [
         "В тестовой Telegram-сессии: новый пользователь — проходит FSM регистрации.",
         "В YClients появляется/находится клиент с указанным телефоном.",

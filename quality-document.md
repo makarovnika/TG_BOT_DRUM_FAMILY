@@ -31,13 +31,31 @@
 | Bot entry (`src/main.py`) | A | минимальный, одна команда `/start`, проверен в Telegram | высокая | — | 2026-05-17 |
 | Bot handlers (`src/bot/handlers/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
 | FSM states (`src/bot/states/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
-| YClients client (`src/yclients/`) | D | пустой пакет | — | весь слой; retry/refresh-policy ещё не реализованы | 2026-05-17 |
-| DB layer (`src/db/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
+| YClients client (`src/yclients/`) | B | retry/refresh реализованы, 13 тестов на моках | высокая | не проверено против реального API (нет партнёрского токена) | 2026-05-17 |
+| DB layer (`src/db/`) | A | User-модель + async-сессия + 6 тестов CRUD на in-memory SQLite | высокая | — | 2026-05-17 |
 | Services (`src/services/`) | D | пустой пакет | — | весь слой | 2026-05-17 |
 | Конфиг (`src/config.py`) | B | pydantic-settings, ленивый `get_settings()` | высокая | не покрыт тестами (не нужно на этом этапе) | 2026-05-17 |
-| Harness (init.sh + tests/) | A | стандартный, зелёный | высокая | — | 2026-05-17 |
+| Harness (init.sh + tests/) | A | стандартный, зелёный, 20 тестов | высокая | — | 2026-05-17 |
+| Git hooks (`.githooks/`) | A | pre-commit с ruff + format-check + pytest, активен | высокая | — | 2026-05-17 |
 
 ## Change History
+
+### 2026-05-17 (поздний вечер) — Session 004
+
+- Changes: подняты git + pre-commit (hook гоняет ruff + pytest), реализован
+  DB-слой (User-модель + сессия + 6 тестов) и YClients-клиент с retry/refresh
+  (13 тестов на respx-моках). Всего 20 тестов зелёных.
+- Domains promoted: «Регистрация ученика» осталась D (фича не сдана),
+  но фундамент (DB-слой) теперь A. YClients-слой D → B.
+- Domains demoted: —
+- New gaps identified:
+  - pydantic-модели YClients не верифицированы против реального API.
+- Gaps closed:
+  - «нет git-репозитория» — закрыто;
+  - «нет защиты от красных коммитов» — закрыто pre-commit hook'ом;
+  - «нет DB-слоя» — закрыто;
+  - «нет async-клиента YClients» — закрыто (за исключением smoke против
+    реального API).
 
 ### 2026-05-17 (вечер) — Session 003
 

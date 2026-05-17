@@ -5,12 +5,17 @@
 - Repository root: `/Users/muraveika/Телеграм`
 - Standard startup path: `./init.sh`
 - Standard verification path: `uv run pytest -q` + `uv run ruff check src tests`
-  (внутри `./init.sh`)
+  (внутри `./init.sh`), плюс `pre-commit` hook в `.githooks/pre-commit`.
+- Git: репозиторий инициализирован, ветка `main`, 3 коммита
+  (`0255469` initial → `9fe2009` db → `0c71139` yclients).
 - Last passing feature: `setup-000` (каркас + рабочий бот @DrumFamily_Tomsk_Bot,
   команда `/start` подтверждена скриншотом).
-- Current highest-priority unfinished feature: `yclients-001` — в статусе `blocked`.
+- Current highest-priority unfinished feature: `yclients-001` — в статусе `blocked`
+  (но ~80% кода готово на моках, 13 тестов зелёных).
 - Current blocker: партнёрский токен YClients ещё не получен
   (заявка на developers.yclients.com, рассмотрение несколько дней).
+- Дополнительно: ~30% будущей фичи `registration-002` тоже закрыто авансом
+  (DB-слой `src/db/` + 6 тестов).
 
 ## Session Log
 
@@ -80,6 +85,62 @@
   - Опционально (если есть желание двигаться вперёд): инициализировать git-
     репозиторий и сделать первый коммит, добавить пре-коммит хуки с ruff
     (это не блокирует фичи и улучшает гигиену).
+
+### Session 004 — параллельная работа пока ждём токен YClients
+
+- Date: 2026-05-17
+- Goal: пока ждём партнёрский токен, продвинуть всё, что не зависит от
+  реального YClients API: git, DB-слой, YClients-клиент на respx-моках.
+- Completed:
+  - **Git**: `git init -b main`, `.githooks/pre-commit` (ruff check + ruff format
+    --check + pytest), активирован через `git config core.hooksPath .githooks`.
+    Pre-commit hook проверен — блокирует красные коммиты.
+  - **3 коммита** на ветке `main`:
+    - `0255469` chore: initial commit — каркас + setup-000 passing;
+    - `9fe2009` feat(db): User-модель + async-фабрика сессий + 6 тестов;
+    - `0c71139` feat(yclients): YClientsClient с retry/refresh + 13 тестов.
+  - **DB-слой** (`src/db/`):
+    - `models.py` — модель `User` (telegram_id PK BigInteger, yclients_client_id
+      nullable, full_name, phone, created_at, updated_at);
+    - `session.py` — `create_engine` / `create_session_factory` / `init_db`,
+      принимают URL как параметр (тесты используют in-memory SQLite);
+    - `tests/test_db.py` — 6 тестов (создание, апдейт, поиск, уникальность PK).
+  - **YClients-клиент** (`src/yclients/`):
+    - `exceptions.py` — типизированные ошибки (Auth/RateLimited/Server/Client);
+    - `models.py` — pydantic-модели (AuthResponse, Service, Staff, Client,
+      Slot, BookRecord, Record), `extra="ignore"`;
+    - `client.py` — `YClientsClient` (async context manager, заголовок
+      `Bearer {partner}, User {user}`, авторефреш user_token на 401 под
+      asyncio.Lock, экспоненциальный backoff на 429/5xx с настраиваемым
+      `backoff_base`, методы auth/get_services/get_staff/search_client/
+      create_client);
+    - `smoke_test.py` — ручной запуск против реального API после получения
+      токена (`uv run python -m src.yclients.smoke_test`);
+    - `tests/test_yclients_client.py` — 13 тестов на respx-моках.
+- Verification run:
+  - `uv run ruff check src tests` — All checks passed;
+  - `uv run ruff format --check src tests` — 21 file already formatted;
+  - `uv run pytest -q` — **20 passed** (2 smoke + 6 db + 12 yclients);
+  - pre-commit hook отработал штатно на всех трёх коммитах.
+- Evidence captured: см. `feature_list.json` → `yclients-001.evidence` и
+  `registration-002.partial_progress`.
+- Commits: `0255469`, `9fe2009`, `0c71139` (3 коммита на `main`).
+- Files or artifacts updated:
+  - новые: `.githooks/pre-commit`, `src/db/models.py`, `src/db/session.py`,
+    `src/yclients/{exceptions,models,client,smoke_test}.py`,
+    `tests/test_db.py`, `tests/test_yclients_client.py`;
+  - обновлены: `feature_list.json`, `claude-progress.md`, `session-handoff.md`,
+    `quality-document.md`, `README.md` (добавлен раздел про pre-commit).
+- Known risk or unresolved issue:
+  - pydantic-модели YClients написаны по документации без проверки против
+    реального API — могут потребоваться правки полей после прихода токена;
+  - вопрос про SMS-подтверждение `book_record` всё ещё открыт.
+- Next best step:
+  - Когда придёт партнёрский токен — вписать в `.env`, запустить
+    `uv run python -m src.yclients.smoke_test`, поправить расхождения
+    в моделях, перевести `yclients-001` в `passing`, начать `registration-002`.
+  - До получения токена можно сделать ещё одну параллельную задачу:
+    docker-setup для будущего деплоя (фича `deploy-007`).
 
 ### Session 003 — добивание setup-000 до passing
 

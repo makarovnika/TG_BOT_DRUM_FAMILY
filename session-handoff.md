@@ -2,64 +2,54 @@
 
 ## Verified Now
 
-- What is currently working:
-  - `./init.sh` отрабатывает целиком зелёно: `uv sync` ставит 36 пакетов,
-    `ruff check src tests` — All checks passed, `pytest -q` — 2 passed;
-  - Telegram-бот **@DrumFamily_Tomsk_Bot** (id 8972431305) реально отвечает
-    на `/start` сообщением «Привет, Nikita! Я бот школы барабанов. Пока я умею
-    только здороваться — остальное появится в следующих обновлениях.»
-    (скриншот зафиксирован 2026-05-17 в `setup-000.evidence`);
-  - каркас в `src/`: `config.py` (pydantic-settings, ленивый `get_settings()`),
-    `main.py` (aiogram-бот с одной командой `/start`);
-  - все подпакеты (`src/bot/{handlers,keyboards,states,middlewares}`,
-    `src/yclients`, `src/db`, `src/services`) — с пустыми `__init__.py`.
-- What verification actually ran: `uv sync`, `uv run ruff check src tests`,
-  `uv run pytest -q`, полный `./init.sh` без `RUN_START_COMMAND`,
-  `bot.get_me()` через aiogram, реальная отправка `/start` в Telegram.
+- `./init.sh` зелёный: `uv sync` → `ruff check` → `ruff format --check`
+  → `pytest -q` (20 passed: 2 smoke + 6 db + 12 yclients).
+- Pre-commit hook (`.githooks/pre-commit`) активен, блокирует красные коммиты.
+- Telegram-бот **@DrumFamily_Tomsk_Bot** отвечает на `/start` (зафиксировано
+  в `setup-000.evidence` скриншотом 2026-05-17).
+- Git: ветка `main`, 3 коммита: `0255469`, `9fe2009`, `0c71139`.
 
-## Changed This Session
+## Changed This Session (Session 004)
 
-- `setup-000` → `passing` (evidence дополнен скриншотом из Telegram).
-- `yclients-001` → `blocked` (партнёрский токен YClients ещё не получен).
-- `active_feature` в `feature_list.json` → `null` (нет активной фичи, пока ждём).
-- В `claude-progress.md` добавлена Session 003.
+- `git init -b main`, `.githooks/pre-commit` с ruff+pytest, активирован через
+  `core.hooksPath=.githooks`. README обновлён инструкцией по активации.
+- DB-слой: `src/db/models.py` (`User`), `src/db/session.py`, `tests/test_db.py` (6 тестов).
+- YClients-клиент: `src/yclients/{exceptions,models,client,smoke_test}.py`,
+  `tests/test_yclients_client.py` (13 тестов).
+- `yclients-001` остаётся `blocked`, но evidence показывает ~80% готовности
+  (всё кроме smoke_test против реального API).
+- `registration-002` имеет `partial_progress`: DB готов, остался FSM + сервис.
 
 ## Broken Or Unverified
 
 - Known defect: нет.
-- Unverified path: ничего срочного — все включённые в MVP пути либо `passing`,
-  либо `blocked` по понятной внешней причине.
+- Unverified path: pydantic-модели YClients не проверены против реального API
+  (написаны по документации). Возможны расхождения в полях.
 - Risk for the next session:
-  - партнёрский токен YClients не запрошен — без него `yclients-001`
-    и все зависящие от него фичи (registration-002, booking-individual-003,
-    my-bookings-004, profile-005, booking-group-006) стоят;
-  - открытый вопрос про SMS-подтверждение `book_record` для
-    `booking-individual-003` — лучше задать поддержке YClients параллельно
-    с подачей заявки, чтобы к моменту разблокировки ответ уже был на руках;
-  - git ещё не инициализирован — потеря работы возможна, если что-то снесётся.
+  - партнёрский токен YClients не получен — `yclients-001` не закроется
+    в `passing`, пока не пройдёт smoke_test;
+  - открытый вопрос про SMS-подтверждение `book_record` для `booking-individual-003`.
 
 ## Next Best Step
 
-- Внешние действия Никиты (вне сессии Claude):
-  1. Подать заявку на developers.yclients.com на партнёрский токен.
-  2. Написать в поддержку YClients: «Можно ли при создании записи через API
-     (`POST /book_record`) отключить SMS-подтверждение клиента, либо есть ли
-     способ создавать запись от имени админа без `book_code`?»
-- Опциональная техническая задача (можно делать прямо сейчас, не блокирует ничего):
-  - `git init`, первый коммит, `.gitignore` уже на месте;
-  - добавить pre-commit с `ruff format --check` + `ruff check` (защищает от
-    случайных красных коммитов).
-- Когда придёт партнёрский токен YClients:
-  - вписать в `.env`: `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_LOGIN`,
-    `YCLIENTS_USER_PASSWORD`, `YCLIENTS_COMPANY_ID`, `YCLIENTS_FORM_ID`;
-  - перевести `yclients-001` из `blocked` в `in_progress`;
-  - начать с `src/yclients/client.py`: `auth()`, `get_services()`, `get_staff()`,
-    `search_client()`, `create_client()` + pydantic-модели в `models.py`.
+- **Когда придёт партнёрский токен YClients:**
+  1. Вписать в `.env`: `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_LOGIN`,
+     `YCLIENTS_USER_PASSWORD`, `YCLIENTS_COMPANY_ID`, `YCLIENTS_FORM_ID`.
+  2. `uv run python -m src.yclients.smoke_test` — должен напечатать список
+     услуг и преподавателей школы.
+  3. Если падает на парсинге pydantic — поправить поля в `src/yclients/models.py`,
+     обновить соответствующие моки в `tests/test_yclients_client.py`.
+  4. Когда smoke зелёный — `yclients-001` → `passing`, начать `registration-002`.
+- **Параллельная задача, не блокируется ничем:** docker-setup для будущего
+  деплоя (`deploy-007` частично, без VPS-проверки).
+- **Внешнее действие Никиты:** написать в поддержку YClients про
+  SMS-подтверждение `book_record` (для `booking-individual-003`),
+  параллельно с ожиданием партнёрского токена.
 
 ## Commands
 
 - Startup: `./init.sh`
 - Verification: `uv run pytest -q` и `uv run ruff check src tests`
 - Запустить бота локально: `RUN_START_COMMAND=1 ./init.sh`
-  (или напрямую: `uv run python -m src.main`)
+- Smoke против реального YClients (после токена): `uv run python -m src.yclients.smoke_test`
 - Если `uv` не виден в новой сессии: `export PATH="$HOME/.local/bin:$PATH"`
