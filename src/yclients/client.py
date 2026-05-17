@@ -175,7 +175,9 @@ class YClientsClient:
 
             status = response.status_code
 
-            if status == 200:
+            # YClients отдаёт 200 для GET и часто 201 для POST (create).
+            # Оба значения — успех, возвращаем JSON.
+            if status in (200, 201):
                 return response.json()
 
             if status == 401 and not already_refreshed and self._can_refresh_token:
@@ -246,13 +248,17 @@ class YClientsClient:
             await self._auth_locked()
 
     async def _auth_locked(self) -> None:
-        """Реальный вызов POST /auth. Должен вызываться под self._auth_lock."""
+        """Реальный вызов POST /auth. Должен вызываться под self._auth_lock.
+
+        YClients возвращает 200 или 201 — оба значат успех (201 трактуется
+        как «user_token created»). Всё, что не 2xx, считаем ошибкой.
+        """
         response = await self._http.post(
             "/auth",
             headers=self._headers(with_user=False),
             json={"login": self._user_login, "password": self._user_password},
         )
-        if response.status_code != 200:
+        if response.status_code not in (200, 201):
             raise YClientsAuthError(
                 f"/auth вернул {response.status_code}",
                 status_code=response.status_code,
