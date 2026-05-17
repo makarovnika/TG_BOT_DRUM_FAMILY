@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pre-commit hook: гоняет ruff (check + format-check) и pytest перед коммитом.
+# Если что-то падает — коммит не проходит, и ты видишь, что именно сломано.
+#
+# Активация (один раз):
+#     git config core.hooksPath .githooks
+# Проверить, что hook активен:
+#     git config --get core.hooksPath   # должно вывести .githooks
+#
+# Обход (в редких случаях, когда точно знаешь, что делаешь):
+#     git commit --no-verify
+# Но: согласно правилам проекта (см. AGENTS.md), без --no-verify лучше не жить.
+
+set -euo pipefail
+
+# Делаем uv доступным даже если PATH не подхватился (например, при коммите из GUI).
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "pre-commit: uv не найден в PATH. Установка: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
+
+echo "==> pre-commit: ruff check"
+uv run ruff check src tests
+
+echo "==> pre-commit: ruff format --check"
+uv run ruff format --check src tests
+
+echo "==> pre-commit: pytest -q"
+uv run pytest -q
+
+echo "==> pre-commit: OK"

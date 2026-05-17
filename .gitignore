@@ -1,0 +1,29 @@
+# Секреты
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Виртуальное окружение и кэши инструментов
+.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Логи
+*.log
+
+# Внимание: uv.lock мы НЕ игнорируем — он коммитится, чтобы версии зависимостей
+# совпадали у тебя на ноуте и на VPS.

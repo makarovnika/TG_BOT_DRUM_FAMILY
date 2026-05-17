@@ -1,0 +1,151 @@
+{
+  "project": "drum-school-bot",
+  "last_updated": "2026-05-17",
+  "active_feature": null,
+  "rules": {
+    "single_active_feature": true,
+    "passing_requires_evidence": true,
+    "do_not_skip_verification": true
+  },
+  "status_legend": {
+    "not_started": "Работа ещё не начата.",
+    "in_progress": "Активная задача сессии.",
+    "blocked": "Работа невозможна, пока не снят зафиксированный блокер.",
+    "passing": "Требуемая верификация прошла, доказательства зафиксированы."
+  },
+  "features": [
+    {
+      "id": "setup-000",
+      "priority": 0,
+      "area": "infra",
+      "title": "Каркас проекта и минимальный /start",
+      "user_visible_behavior": "Бот в Telegram отвечает на /start сообщением «Привет».",
+      "status": "passing",
+      "verification": [
+        "Скопировать .env.example в .env, заполнить BOT_TOKEN.",
+        "Запустить ./init.sh без RUN_START_COMMAND — pytest и ruff проходят на пустом проекте (или один smoke-тест-заглушка).",
+        "Запустить RUN_START_COMMAND=1 ./init.sh — процесс запускается без ошибок.",
+        "Открыть бота в Telegram, отправить /start.",
+        "Получить ответ «Привет»."
+      ],
+      "evidence": [
+        "2026-05-17: uv 0.11.14 установлен, uv sync поставил 36 пакетов.",
+        "2026-05-17: ./init.sh отрабатывает зелёно (Lint: All checks passed; pytest: 2 passed).",
+        "2026-05-17: tests/test_smoke.py — 2 теста проходят (test_python_version, test_can_import_src).",
+        "2026-05-17: Никита заполнил .env с реальным BOT_TOKEN; preflight через bot.get_me() — токен валиден, бот @DrumFamily_Tomsk_Bot (id 8972431305).",
+        "2026-05-17: бот запущен в фоне через `uv run python -m src.main`, Никита отправил /start, получил ответ «Привет, Nikita! Я бот школы барабанов. Пока я умею только здороваться — остальное появится в следующих обновлениях.» (скриншот в чате сессии). Фоновый процесс остановлен через TaskStop."
+      ],
+      "notes": "Зависимости (aiogram, httpx, sqlalchemy[asyncio], aiosqlite, pydantic-settings, structlog, ruff, pytest, pytest-asyncio, respx) встали через `uv sync`. Фича закрыта."
+    },
+    {
+      "id": "yclients-001",
+      "priority": 1,
+      "area": "yclients",
+      "title": "Async-клиент YClients API",
+      "user_visible_behavior": "Внутренний клиент умеет авторизоваться и читать справочники (услуги, преподаватели, поиск клиента).",
+      "status": "blocked",
+      "blocker": "Ждём партнёрский токен YClients (заявка подаётся на developers.yclients.com, рассмотрение несколько дней). До получения токена нельзя начинать реализацию и тестировать через respx-моки настоящие endpoints.",
+      "verification": [
+        "uv run python -m src.yclients.smoke_test выводит список услуг и преподавателей школы.",
+        "uv run pytest tests/test_yclients_client.py -q — все тесты с respx-моками зелёные.",
+        "Покрыты методы auth(), get_services(), get_staff(), search_client(), create_client().",
+        "401 → перевыпуск user_token; 429 → retry с backoff; 5xx → 3 попытки."
+      ],
+      "evidence": [],
+      "notes": "Pydantic-модели в src/yclients/models.py. Никаких походов в реальный API из тестов."
+    },
+    {
+      "id": "registration-002",
+      "priority": 2,
+      "area": "bot",
+      "title": "Регистрация ученика через FSM",
+      "user_visible_behavior": "Новый пользователь после /start проходит ask_name → ask_phone, бот находит/создаёт клиента в YClients и привязывает telegram_id к yclients_client_id; повторный /start ведёт сразу в главное меню.",
+      "status": "not_started",
+      "verification": [
+        "В тестовой Telegram-сессии: новый пользователь — проходит FSM регистрации.",
+        "В YClients появляется/находится клиент с указанным телефоном.",
+        "В SQLite есть запись User(telegram_id, yclients_client_id).",
+        "Повторный /start — сразу главное меню, без повторного ask_name."
+      ],
+      "evidence": [],
+      "notes": "FSM-состояния — в src/bot/states/. Маппинг — в src/db/models.py."
+    },
+    {
+      "id": "booking-individual-003",
+      "priority": 3,
+      "area": "bot",
+      "title": "Запись на индивидуальное занятие",
+      "user_visible_behavior": "Пользователь выбирает услугу → преподавателя (или «любой») → дату → слот → подтверждает; запись появляется в YClients.",
+      "status": "not_started",
+      "verification": [
+        "В тестовой Telegram-сессии создать запись по полному FSM-пути.",
+        "В админке YClients видна созданная запись с правильным клиентом, услугой, преподавателем, временем.",
+        "Бот возвращает сообщение с деталями записи.",
+        "Если YClients требует SMS-подтверждение — задокументировать обходной путь в notes этой фичи."
+      ],
+      "evidence": [],
+      "notes": "Inline-календарь — aiogram_calendar. Кэш услуг/преподавателей в памяти 5 минут. ВНИМАНИЕ: book_record может требовать book_code (SMS). Проверить у поддержки YClients до старта."
+    },
+    {
+      "id": "my-bookings-004",
+      "priority": 4,
+      "area": "bot",
+      "title": "Список моих занятий + отмена",
+      "user_visible_behavior": "Пользователь видит список своих будущих занятий карточками; на каждой — кнопка «Отменить» (доступна, если до занятия > 24 ч).",
+      "status": "not_started",
+      "verification": [
+        "У клиента с известными записями бот показывает корректный список (дата/время/услуга/преподаватель/зал).",
+        "Кнопка «Отменить» отсутствует/отключена, если до занятия ≤ 24 ч.",
+        "Отмена с подтверждением — запись пропадает из YClients и из списка."
+      ],
+      "evidence": [],
+      "notes": "GET /records/{company_id} с фильтром client_id и date >= сегодня. Удаление — DELETE /user/records/{record_id}/{record_hash}."
+    },
+    {
+      "id": "profile-005",
+      "priority": 5,
+      "area": "bot",
+      "title": "Профиль пользователя",
+      "user_visible_behavior": "Пользователь видит имя, телефон и количество оставшихся занятий по абонементу.",
+      "status": "not_started",
+      "verification": [
+        "Для клиента с активным абонементом — количество занятий совпадает с YClients.",
+        "Для клиента без абонемента — отображается «нет активного абонемента».",
+        "Имя и телефон совпадают с карточкой клиента в YClients."
+      ],
+      "evidence": [],
+      "notes": "GET /loyalty/abonements/{company_id} или через карточку клиента."
+    },
+    {
+      "id": "booking-group-006",
+      "priority": 6,
+      "area": "bot",
+      "title": "Запись на групповое занятие",
+      "user_visible_behavior": "Пользователь выбирает «Групповое», видит список ближайших событий с свободными местами, записывается одним кликом.",
+      "status": "not_started",
+      "verification": [
+        "Список содержит только события с свободными местами (фильтр).",
+        "Запись через POST /activity/{activity_id}/book/{company_id} — успех, событие появилось у клиента в YClients.",
+        "Полный путь проверен на двух разных событиях."
+      ],
+      "evidence": [],
+      "notes": "GET /activity/search/{company_id} для списка."
+    },
+    {
+      "id": "deploy-007",
+      "priority": 7,
+      "area": "infra",
+      "title": "Деплой на VPS через Docker",
+      "user_visible_behavior": "Бот круглосуточно работает на VPS после `docker compose up -d`.",
+      "status": "not_started",
+      "verification": [
+        "На чистой VPS: git clone, заполнить .env, docker compose up -d.",
+        "Бот отвечает на /start.",
+        "Логи доступны через docker compose logs -f.",
+        "После reboot VPS бот стартует автоматически (restart: unless-stopped)."
+      ],
+      "evidence": [],
+      "notes": "Dockerfile на python:3.11-slim, docker-compose.yml с volume для bot.db и .env."
+    }
+  ]
+}
