@@ -662,10 +662,11 @@ async def test_get_client_records_parses_real_shape(client: YClientsClient) -> N
         assert r.visit_attendance == 0
 
 
-async def test_cancel_record_does_delete(client: YClientsClient) -> None:
+async def test_cancel_record_uses_singular_endpoint(client: YClientsClient) -> None:
+    """Эмпирически: только /record/{cid}/{id} (singular) работает, не /records/."""
     with respx.mock(base_url=BASE_URL) as mock:
         mock.post("/auth").mock(return_value=_auth_ok())
-        del_route = mock.delete("/records/12345/999").mock(
+        del_route = mock.delete("/record/12345/999").mock(
             return_value=httpx.Response(204)  # No Content
         )
 
@@ -678,7 +679,7 @@ async def test_cancel_record_204_no_body_handled(client: YClientsClient) -> None
     """DELETE с пустым телом не должен падать на response.json()."""
     with respx.mock(base_url=BASE_URL) as mock:
         mock.post("/auth").mock(return_value=_auth_ok())
-        mock.delete("/records/12345/999").mock(return_value=httpx.Response(204))
+        mock.delete("/record/12345/999").mock(return_value=httpx.Response(204))
 
         # Не должно ничего бросить
         await client.cancel_record(999)

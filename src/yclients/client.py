@@ -447,12 +447,18 @@ class YClientsClient:
         return [Record.model_validate(item) for item in payload["data"]]
 
     async def cancel_record(self, record_id: int) -> None:
-        """DELETE /records/{company_id}/{record_id} — отмена записи.
+        """DELETE /record/{company_id}/{record_id} — отмена записи.
+
+        ВНИМАНИЕ: endpoint singular (`record`), а не plural (`records`).
+        Это нестандартно (плюрал везде в API, кроме именно этого случая),
+        но эмпирически только так работает:
+            DELETE /records/{cid}/{rid} → 404 «Произошла ошибка»
+            DELETE /record/{cid}/{rid}  → 204 No Content (успех)
 
         Endpoint админский, нужны соответствующие права у user_token.
-        Возврат — нет тела (204 No Content) или { success: True }.
+        Возврат — пустое тело (204) или { success: True }.
         """
-        await self._request("DELETE", f"/records/{self._company_id}/{record_id}")
+        await self._request("DELETE", f"/record/{self._company_id}/{record_id}")
 
     async def book_record(
         self,
