@@ -6,7 +6,7 @@
 """
 
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest_asyncio
 
@@ -22,7 +22,8 @@ async def middleware() -> AsyncGenerator[DepsMiddleware, None]:
     await init_db(engine)
     factory = create_session_factory(engine)
     yclients = YClientsClient(partner_token="p", user_token="u", company_id=1, backoff_base=0)
-    yield DepsMiddleware(session_factory=factory, yclients=yclients)
+    reminders = MagicMock()  # тестовая заглушка, не запускаем планировщик
+    yield DepsMiddleware(session_factory=factory, yclients=yclients, reminders=reminders)
     await yclients.close()
     await engine.dispose()
 

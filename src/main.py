@@ -28,6 +28,7 @@ from src.bot.handlers import (
     static_info,
 )
 from src.bot.middlewares.deps import DepsMiddleware
+from src.bot.reminders import RemindersScheduler
 from src.config import Settings, get_settings
 from src.db.session import create_engine, create_session_factory, init_db
 from src.yclients.client import YClientsClient
@@ -79,6 +80,10 @@ async def main() -> None:
 
     # --- Telegram-бот
     bot = Bot(token=settings.bot_token)
+
+    # --- Напоминания за 24ч и 1ч до занятия (ТЗ §8.13, §8.14)
+    reminders = RemindersScheduler(bot)
+    reminders.start()
     # set_my_commands регистрирует команды в Telegram UI — при наборе `/`
     # пользователь видит автоподсказку. Вызываем на каждом старте: если
     # описание поменялось — Telegram обновит, иначе ноп.
@@ -97,7 +102,13 @@ async def main() -> None:
         ]
     )
     dp = Dispatcher()
-    dp.update.middleware(DepsMiddleware(session_factory=session_factory, yclients=yclients))
+    dp.update.middleware(
+        DepsMiddleware(
+            session_factory=session_factory,
+            yclients=yclients,
+            reminders=reminders,
+        )
+    )
     # Порядок важен: специфичные команды → /start → FSM регистрации →
     # реальные обработчики меню → заглушки.
     # Это даёт правильный приоритет: /cancel ловится ВНЕ FSM, реальные
@@ -116,6 +127,7 @@ async def main() -> None:
         await dp.start_polling(bot)
     finally:
         log.info("bot.shutdown")
+        await reminders.shutdown()
         await bot.session.close()
         await yclients.close()
         await engine.dispose()

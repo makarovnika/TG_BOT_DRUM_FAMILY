@@ -21,6 +21,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.bot.reminders import RemindersScheduler
 from src.services.user_service import UserService
 from src.yclients.client import YClientsClient
 
@@ -31,9 +32,11 @@ class DepsMiddleware(BaseMiddleware):
         *,
         session_factory: async_sessionmaker[AsyncSession],
         yclients: YClientsClient,
+        reminders: RemindersScheduler,
     ) -> None:
         self._session_factory = session_factory
         self._yclients = yclients
+        self._reminders = reminders
 
     async def __call__(
         self,
@@ -47,4 +50,6 @@ class DepsMiddleware(BaseMiddleware):
             # YClients-клиент инжектится напрямую — обработчики, работающие с
             # его данными в обход сервисов (профиль, мои занятия), используют его.
             data["yclients"] = self._yclients
+            # Scheduler — для booking (планируем) и my_bookings (отменяем).
+            data["reminders"] = self._reminders
             return await handler(event, data)

@@ -29,6 +29,7 @@ from src.bot.keyboards.bookings import (
     cancel_confirm_keyboard,
 )
 from src.bot.keyboards.main_menu import MENU_MY_BOOKINGS
+from src.bot.reminders import RemindersScheduler
 from src.bot.utils import escape_html
 from src.services.user_service import UserService
 from src.yclients.client import YClientsClient
@@ -139,8 +140,9 @@ async def cancel_declined(callback: CallbackQuery) -> None:
 async def do_cancel(
     callback: CallbackQuery,
     yclients: YClientsClient,
+    reminders: RemindersScheduler,
 ) -> None:
-    """«Да, отменить» → реально дёргаем YClients."""
+    """«Да, отменить» → реально дёргаем YClients + чистим reminder'ы."""
     if callback.data is None or callback.message is None:
         await callback.answer()
         return
@@ -152,6 +154,10 @@ async def do_cancel(
         log.warning("cancel.yclients_error", record_id=record_id, error=str(exc))
         await callback.answer(texts.MYBOOK_CANCEL_FAILED, show_alert=True)
         return
+
+    # Отмена в YClients прошла — снимаем запланированные напоминания.
+    # Метод идемпотентный: если для record_id job'ов нет, тихо вернёт.
+    reminders.cancel_for_booking(record_id)
 
     # `html_text` сохраняет HTML-разметку оригинального сообщения; если его
     # нет (например, сообщение было без parse_mode) — fall back на plain text.

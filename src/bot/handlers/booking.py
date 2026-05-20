@@ -45,6 +45,7 @@ from src.bot.keyboards.booking import (
     staff_keyboard,
 )
 from src.bot.keyboards.main_menu import MENU_BOOK, main_menu_kb
+from src.bot.reminders import RemindersScheduler
 from src.bot.states.booking import BookingStates
 from src.bot.utils import escape_html
 from src.services.user_service import UserService
@@ -329,6 +330,7 @@ async def confirm_booking(
     state: FSMContext,
     user_service: UserService,
     yclients: YClientsClient,
+    reminders: RemindersScheduler,
 ) -> None:
     if callback.message is None or callback.from_user is None:
         await callback.answer()
@@ -398,6 +400,27 @@ async def confirm_booking(
     )
 
     pretty_time = _format_iso(data["slot_datetime"])
+
+    # Планируем напоминания за 24ч и за 1ч до начала занятия (ТЗ §8.13, §8.14).
+    # Передаём короткое HTML-summary, который вставится в шаблон reminder'а.
+    if record_id is not None:
+        try:
+            lesson_dt = datetime.fromisoformat(data["slot_datetime"])
+            summary = (
+                f"🥁 <b>{escape_html(data['service_title'])}</b>\n"
+                f"👤 {escape_html(data['staff_name'])}\n"
+                f"🕒 {pretty_time}"
+            )
+            reminders.schedule_for_booking(
+                record_id=record_id,
+                telegram_id=user.telegram_id,
+                lesson_datetime=lesson_dt,
+                summary=summary,
+            )
+        except (ValueError, KeyError) as exc:
+            # Парсинг datetime упал или FSM-data неполная — не критично для
+            # самой записи (она уже создана в YClients), просто без reminder'ов.
+            log.warning("reminders.schedule_failed", record_id=record_id, error=str(exc))
     # ТЗ §9.5: под подтверждением — inline-кнопки «Отменить» и «Маршрут».
     # Если по какой-то причине record_id не пришёл (странный кейс) — даём
     # сообщение без кнопок, чтобы не сломалось.
