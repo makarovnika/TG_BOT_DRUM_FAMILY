@@ -13,6 +13,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from src.bot import texts
+from src.bot.assets import banner
 from src.bot.keyboards.main_menu import (
     MENU_ADMIN,
     MENU_CONTACTS,
@@ -29,7 +30,12 @@ router = Router(name="static_info")
 @router.message(Command("contacts"))
 @router.message(F.text == MENU_CONTACTS)
 async def show_contacts(message: Message) -> None:
-    await message.answer(texts.CONTACTS_TEXT, parse_mode="HTML")
+    # Баннер «200 м² драйва» + адрес/телефон/часы работы в caption.
+    await message.answer_photo(
+        photo=banner("contacts"),
+        caption=texts.CONTACTS_TEXT,
+        parse_mode="HTML",
+    )
 
 
 # ---------- Стоимость ----------

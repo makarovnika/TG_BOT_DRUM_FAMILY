@@ -57,6 +57,7 @@ def make_message(*, text: str | None = None, contact_phone: str | None = None) -
     msg.from_user = MagicMock(id=12345, full_name="Тест Тестов")
     msg.text = text
     msg.answer = AsyncMock()
+    msg.answer_photo = AsyncMock()
     if contact_phone is not None:
         msg.contact = MagicMock(phone_number=contact_phone)
     else:
@@ -96,7 +97,7 @@ async def test_start_for_registered_user_shows_main_menu() -> None:
 
 
 async def test_start_for_new_user_starts_fsm() -> None:
-    """Новый пользователь → set_state(waiting_for_name)."""
+    """Новый пользователь → set_state(waiting_for_name) + welcome-баннер."""
     message = make_message(text="/start")
     state = make_state()
     user_service = AsyncMock()
@@ -106,7 +107,8 @@ async def test_start_for_new_user_starts_fsm() -> None:
 
     state.clear.assert_awaited_once()
     state.set_state.assert_awaited_once_with(RegistrationStates.waiting_for_name)
-    message.answer.assert_awaited_once()
+    # Новый пользователь получает приветственный баннер с caption-приветствием.
+    message.answer_photo.assert_awaited_once()
 
 
 # ---------- FSM регистрации ----------
@@ -270,10 +272,11 @@ async def test_help_replies_with_commands_overview() -> None:
 async def test_contacts_replies_with_static_text() -> None:
     message = make_message(text="📍 Адрес")
     await show_contacts(message)
-    message.answer.assert_awaited_once()
-    text = message.answer.call_args.args[0]
-    assert "Drum Family" in text
-    assert "Комсомольский" in text
+    # Контакты теперь отправляются с баннером (фото + caption).
+    message.answer_photo.assert_awaited_once()
+    caption = message.answer_photo.call_args.kwargs.get("caption", "")
+    assert "Drum Family" in caption
+    assert "Комсомольский" in caption
 
 
 async def test_prices_replies() -> None:
@@ -398,9 +401,10 @@ async def test_my_bookings_when_empty() -> None:
 
     await show_my_bookings(message, user_service, yclients)
 
-    # Одно сообщение «занятий нет», без карточек.
-    assert message.answer.await_count == 1
-    assert "нет" in message.answer.call_args.args[0].lower()
+    # Пустое расписание — баннер schedule с caption «записей нет».
+    message.answer_photo.assert_awaited_once()
+    caption = message.answer_photo.call_args.kwargs.get("caption", "")
+    assert "нет" in caption.lower()
 
 
 async def test_my_bookings_filters_past_records() -> None:
@@ -416,10 +420,11 @@ async def test_my_bookings_filters_past_records() -> None:
 
     await show_my_bookings(message, user_service, yclients)
 
-    # Должно быть: 1 «у тебя N занятий» + 1 карточка для будущей записи.
-    assert message.answer.await_count == 2
-    summary = message.answer.await_args_list[0].args[0]
+    # Должно быть: 1 answer_photo (баннер с summary) + 1 answer (карточка записи).
+    message.answer_photo.assert_awaited_once()
+    summary = message.answer_photo.call_args.kwargs.get("caption", "")
     assert "1" in summary  # одно занятие осталось после фильтрации
+    assert message.answer.await_count == 1
 
 
 async def test_my_bookings_when_user_not_registered() -> None:
@@ -445,8 +450,10 @@ def make_callback(*, data: str | None = None) -> MagicMock:
     cb.data = data
     cb.message = MagicMock()
     cb.message.edit_text = AsyncMock()
+    cb.message.edit_caption = AsyncMock()
     cb.message.edit_reply_markup = AsyncMock()
     cb.message.answer = AsyncMock()
+    cb.message.answer_photo = AsyncMock()
     cb.answer = AsyncMock()
     return cb
 
@@ -485,7 +492,8 @@ async def test_start_booking_for_registered_user_sets_state_and_caches_services(
     state.update_data.assert_awaited_once_with(
         services_cache={111: "Услуга один", 222: "Услуга два"}
     )
-    message.answer.assert_awaited_once()
+    # Старт booking-FSM теперь отправляет trial-баннер с inline-кнопками.
+    message.answer_photo.assert_awaited_once()
 
 
 async def test_picked_service_uses_cache_and_advances_to_staff() -> None:
@@ -535,8 +543,9 @@ async def test_picked_slot_shows_summary() -> None:
 
     state.set_state.assert_awaited_once_with(BookingStates.confirming)
     state.update_data.assert_awaited_once_with(slot_datetime="2099-05-20T10:00:00+07:00")
-    callback.message.edit_text.assert_awaited_once()
-    text = callback.message.edit_text.call_args.args[0]
+    # edit_caption, не edit_text — потому что booking начинается с answer_photo.
+    callback.message.edit_caption.assert_awaited_once()
+    text = callback.message.edit_caption.call_args.kwargs.get("caption", "")
     assert "Персональная" in text
     assert "Влад" in text
     assert "20.05.2099" in text  # отформатированная дата
@@ -550,7 +559,8 @@ async def test_cancel_booking_clears_state_and_shows_menu() -> None:
     await cancel_booking(callback, state)
 
     state.clear.assert_awaited_once()
-    callback.message.edit_text.assert_awaited_once()
+    # edit_caption — сообщение booking-FSM это photo (см. start_booking).
+    callback.message.edit_caption.assert_awaited_once()
     # после отмены отправляется новое сообщение «Что дальше?» с main_menu_kb
     callback.message.answer.assert_awaited_once()
 

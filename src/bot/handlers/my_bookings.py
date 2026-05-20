@@ -20,6 +20,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 from src.bot import texts
+from src.bot.assets import banner
 from src.bot.keyboards.bookings import (
     CANCEL_CONFIRM_PREFIX,
     CANCEL_DECLINE_PREFIX,
@@ -80,13 +81,21 @@ async def show_my_bookings(
     future = [r for r in records if _is_future(r, now)]
 
     if not future:
-        await message.answer(texts.MYBOOK_EMPTY)
+        # Пустое расписание — баннер с приглашением записаться.
+        await message.answer_photo(
+            photo=banner("schedule"),
+            caption=texts.MYBOOK_EMPTY,
+        )
         return
 
     # YClients возвращает записи свежими сверху, нам же удобнее по возрастанию.
     future.sort(key=lambda r: r.datetime or r.date or "")
 
-    await message.answer(texts.MYBOOK_SUMMARY.format(count=len(future)))
+    # Баннер «Твой ритм недели» один раз сверху + saying сколько занятий.
+    await message.answer_photo(
+        photo=banner("schedule"),
+        caption=texts.MYBOOK_SUMMARY.format(count=len(future)),
+    )
     for record in future:
         text = _format_record(record)
         hours_left = _hours_until(record, now)

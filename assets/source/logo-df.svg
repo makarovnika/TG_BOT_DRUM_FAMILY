@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Drum Family compact logo "DF" — упрощённая векторная версия по референсу из брендбука.
+     viewBox 0 0 200 200 — центральная точка (100,100). Используйте через <use href="#df-logo"/> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <symbol id="df-logo" viewBox="0 0 200 200">
+      <!-- Drum sticks (скрещенные палочки, белые с круглыми концами) -->
+      <g transform="translate(100 60)">
+        <!-- left-leaning stick -->
+        <g transform="rotate(-22)">
+          <rect x="-70" y="-7" width="140" height="13" rx="6.5" fill="#FFFFFF"/>
+          <circle cx="-70" cy="0" r="9" fill="#FFFFFF"/>
+          <circle cx="70" cy="0" r="9" fill="#FFFFFF"/>
+        </g>
+        <!-- right-leaning stick -->
+        <g transform="rotate(22)">
+          <rect x="-70" y="-7" width="140" height="13" rx="6.5" fill="#FFFFFF"/>
+          <circle cx="-70" cy="0" r="9" fill="#FFFFFF"/>
+          <circle cx="70" cy="0" r="9" fill="#FFFFFF"/>
+        </g>
+      </g>
+
+      <!-- Drum body — три горизонтальные полосы + нижний обод -->
+      <!-- верхний голубой обод -->
+      <rect x="18" y="82" width="164" height="18" fill="#0A91C4"/>
+      <!-- белая центральная полоса (поле под буквы DF) -->
+      <rect x="18" y="100" width="164" height="56" fill="#FFFFFF"/>
+      <!-- нижний голубой обод -->
+      <rect x="18" y="156" width="164" height="18" fill="#0A91C4"/>
+      <!-- чёрный обод-донце (намёк на трёхмерность барабана) -->
+      <rect x="18" y="174" width="164" height="8" fill="#000000"/>
+      <!-- лёгкие тени по бокам корпуса -->
+      <rect x="18" y="82" width="6" height="100" fill="#000000" opacity="0.12"/>
+      <rect x="176" y="82" width="6" height="100" fill="#000000" opacity="0.12"/>
+
+      <!-- DF буквы крупным жирным шрифтом, голубым -->
+      <text x="100" y="146"
+            text-anchor="middle"
+            font-family="Onest, 'Lato Heavy', Lato, 'Poppins', sans-serif"
+            font-weight="900"
+            font-size="58"
+            fill="#0A91C4"
+            letter-spacing="-1">DF</text>
+    </symbol>
+  </defs>
+
+  <use href="#df-logo"/>
+</svg>

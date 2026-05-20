@@ -26,6 +26,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from src.bot import texts
+from src.bot.assets import banner
 from src.bot.keyboards.booking import (
     CANCEL_DATA,
     CONFIRM_PREFIX,
@@ -91,8 +92,11 @@ async def start_booking(
     await state.set_state(BookingStates.choosing_service)
     # Кэшируем `{id: title}` в FSM-data — на следующих шагах достанем без API.
     await state.update_data(services_cache={s.id: s.title for s in services})
-    await message.answer(
-        texts.BOOKING_ASK_SERVICE,
+    # Баннер «Прокачай себя!» — только на входе в FSM. Дальше едитим уже без
+    # фото, потому что aiogram не позволяет менять photo через edit_text.
+    await message.answer_photo(
+        photo=banner("trial"),
+        caption=texts.BOOKING_ASK_SERVICE,
         reply_markup=services_keyboard([(s.id, s.title) for s in services]),
     )
 
@@ -125,7 +129,7 @@ async def picked_service(
         return
 
     if not staff:
-        await callback.message.edit_text(texts.BOOKING_NO_STAFF)
+        await callback.message.edit_caption(caption=texts.BOOKING_NO_STAFF)
         await state.clear()
         await callback.answer()
         return
@@ -136,8 +140,9 @@ async def picked_service(
         staff_cache={m.id: m.name for m in staff},
     )
     await state.set_state(BookingStates.choosing_staff)
-    await callback.message.edit_text(
-        texts.BOOKING_ASK_STAFF.format(service=escape_html(service_title)),
+    # edit_caption, не edit_text — потому что сообщение это photo (см. start_booking).
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_ASK_STAFF.format(service=escape_html(service_title)),
         parse_mode="HTML",
         reply_markup=staff_keyboard([(m.id, m.name) for m in staff]),
     )
@@ -179,8 +184,8 @@ async def picked_staff(
         return
 
     if not dates.booking_dates:
-        await callback.message.edit_text(
-            texts.BOOKING_NO_DATES.format(
+        await callback.message.edit_caption(
+            caption=texts.BOOKING_NO_DATES.format(
                 service=escape_html(data["service_title"]),
                 staff=escape_html(staff_name),
                 days=BOOK_HORIZON_DAYS,
@@ -193,8 +198,8 @@ async def picked_staff(
 
     await state.update_data(staff_id=staff_id, staff_name=staff_name)
     await state.set_state(BookingStates.choosing_date)
-    await callback.message.edit_text(
-        texts.BOOKING_ASK_DATE.format(
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_ASK_DATE.format(
             service=escape_html(data["service_title"]),
             staff=escape_html(staff_name),
         ),
@@ -239,8 +244,8 @@ async def picked_date(
 
     slot_pairs = [(s.time or "—", s.datetime or "") for s in slots if s.datetime]
 
-    await callback.message.edit_text(
-        texts.BOOKING_ASK_TIME.format(
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_ASK_TIME.format(
             service=escape_html(data["service_title"]),
             staff=escape_html(data["staff_name"]),
             date=date_iso,
@@ -264,8 +269,8 @@ async def picked_slot(callback: CallbackQuery, state: FSMContext) -> None:
 
     pretty_time = _format_iso(slot_iso)
 
-    await callback.message.edit_text(
-        texts.BOOKING_CONFIRM.format(
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_CONFIRM.format(
             service=escape_html(data["service_title"]),
             staff=escape_html(data["staff_name"]),
             when=pretty_time,
@@ -306,13 +311,13 @@ async def confirm_booking(
         yc_client = await yclients.get_client_by_id(user.yclients_client_id)
     except YClientsError as exc:
         log.warning("booking.get_client_error", error=str(exc))
-        await callback.message.edit_text(texts.BOOKING_CLIENT_FETCH_ERROR)
+        await callback.message.edit_caption(caption=texts.BOOKING_CLIENT_FETCH_ERROR)
         await state.clear()
         await callback.answer()
         return
 
     if not yc_client.email:
-        await callback.message.edit_text(texts.BOOKING_EMAIL_REQUIRED, parse_mode="HTML")
+        await callback.message.edit_caption(caption=texts.BOOKING_EMAIL_REQUIRED, parse_mode="HTML")
         await state.clear()
         await callback.answer()
         return
@@ -334,8 +339,8 @@ async def confirm_booking(
     except YClientsError as exc:
         log.warning("booking.book_error", error=str(exc))
         # 422 «уже занято», SMS-required и т. п. — показываем человекочитаемо.
-        await callback.message.edit_text(
-            texts.BOOKING_FAILED.format(error=escape_html(str(exc))),
+        await callback.message.edit_caption(
+            caption=texts.BOOKING_FAILED.format(error=escape_html(str(exc))),
             parse_mode="HTML",
         )
         await state.clear()
@@ -346,8 +351,8 @@ async def confirm_booking(
     log.info("booking.created", record_id=record_id, telegram_id=user.telegram_id)
 
     pretty_time = _format_iso(data["slot_datetime"])
-    await callback.message.edit_text(
-        texts.BOOKING_SUCCESS.format(
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_SUCCESS.format(
             service=escape_html(data["service_title"]),
             staff=escape_html(data["staff_name"]),
             when=pretty_time,
@@ -367,7 +372,7 @@ async def cancel_booking(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     await state.clear()
-    await callback.message.edit_text(texts.BOOKING_CANCELLED)
+    await callback.message.edit_caption(caption=texts.BOOKING_CANCELLED)
     await callback.message.answer(texts.BOOKING_WHAT_NEXT, reply_markup=main_menu_kb())
     await callback.answer()
 
