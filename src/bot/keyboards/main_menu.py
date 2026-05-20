@@ -1,28 +1,42 @@
 """Reply-клавиатура главного меню.
 
-5 пунктов из ТЗ. На этом этапе обработчики стоят заглушками
-(см. `src/bot/handlers/menu_stub.py`), реальная логика появится в фичах
-booking-individual-003, my-bookings-004, profile-005, booking-group-006.
+6 кнопок согласно ТЗ §9.1 (drum-family-bot-tz.md):
+- 🥁 Пробный урок         📅 Моё расписание
+- 💳 Стоимость            📍 Адрес
+- ❓ Частые вопросы (один)
+- 💬 Написать админу (один)
+
+Кнопки «Профиль» и «Отменить запись» из меню убраны — доступны через
+команды /profile и через карточки в «📅 Моё расписание» соответственно.
 """
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-# Список кнопок вынесли в константу, чтобы handlers могли матчить по тексту.
-MENU_BOOK = "🥁 Записаться"
-MENU_MY_BOOKINGS = "📅 Мои занятия"
-MENU_CANCEL = "❌ Отменить запись"
-MENU_PROFILE = "👤 Мой профиль"
-MENU_ABOUT = "ℹ️ О школе"
+# Тексты кнопок — константы, чтобы handlers могли матчить по точному тексту.
+# Имена констант сохранены MENU_BOOK / MENU_MY_BOOKINGS, чтобы существующие
+# handler'ы продолжали работать без переименования (важно: callback_data
+# и payload не меняем, только подписи).
+MENU_BOOK = "🥁 Пробный урок"
+MENU_MY_BOOKINGS = "📅 Моё расписание"
+MENU_PRICES = "💳 Стоимость"
+MENU_CONTACTS = "📍 Адрес"
+MENU_FAQ = "❓ Частые вопросы"
+MENU_ADMIN = "💬 Написать админу"
 
-MENU_ITEMS = {MENU_BOOK, MENU_MY_BOOKINGS, MENU_CANCEL, MENU_PROFILE, MENU_ABOUT}
+# Старые названия для обратной совместимости (на случай если где-то ещё используются).
+# В новом меню их нет.
+MENU_CANCEL = "❌ Отменить запись"  # не в меню, оставлено как константа на legacy-stub
+MENU_PROFILE = "👤 Мой профиль"  # не в меню, доступ через /profile
+MENU_ABOUT = "ℹ️ О школе"  # не в меню, доступ через /contacts
 
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=MENU_BOOK)],
-            [KeyboardButton(text=MENU_MY_BOOKINGS), KeyboardButton(text=MENU_CANCEL)],
-            [KeyboardButton(text=MENU_PROFILE), KeyboardButton(text=MENU_ABOUT)],
+            [KeyboardButton(text=MENU_BOOK), KeyboardButton(text=MENU_MY_BOOKINGS)],
+            [KeyboardButton(text=MENU_PRICES), KeyboardButton(text=MENU_CONTACTS)],
+            [KeyboardButton(text=MENU_FAQ)],
+            [KeyboardButton(text=MENU_ADMIN)],
         ],
         resize_keyboard=True,
         input_field_placeholder="Выбери пункт меню",

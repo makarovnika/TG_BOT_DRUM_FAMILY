@@ -19,6 +19,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
+from src.bot import texts
 from src.bot.keyboards.bookings import (
     CANCEL_CONFIRM_PREFIX,
     CANCEL_DECLINE_PREFIX,

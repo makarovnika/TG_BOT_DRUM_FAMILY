@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiogram.fsm.state import State
 
+from src.bot import texts
 from src.bot.handlers.booking import (
     booking_unrecognized,
     cancel_booking,
@@ -23,7 +24,7 @@ from src.bot.handlers.booking import (
     start_booking,
 )
 from src.bot.handlers.commands import cmd_cancel, cmd_help
-from src.bot.handlers.menu_stub import ABOUT_TEXT, about, cancel_stub
+from src.bot.handlers.menu_stub import LEGACY_ABOUT, fallback
 from src.bot.handlers.my_bookings import show_my_bookings
 from src.bot.handlers.profile import show_profile
 from src.bot.handlers.registration import (
@@ -34,7 +35,12 @@ from src.bot.handlers.registration import (
     phone_not_recognized,
 )
 from src.bot.handlers.start import cmd_start
-from src.bot.keyboards.main_menu import MENU_CANCEL
+from src.bot.handlers.static_info import (
+    show_admin,
+    show_contacts,
+    show_faq,
+    show_prices,
+)
 from src.bot.states.booking import BookingStates
 from src.bot.states.registration import RegistrationStates
 from src.db.models import User
@@ -258,25 +264,55 @@ async def test_help_replies_with_commands_overview() -> None:
     assert "/cancel" in args[0]
 
 
-# ---------- menu stubs ----------
+# ---------- static_info: контакты, цены, FAQ, админ ----------
 
 
-async def test_about_replies_with_static_text() -> None:
-    message = make_message(text="ℹ️ О школе")
-
-    await about(message)
-
-    message.answer.assert_awaited_once_with(ABOUT_TEXT)
-
-
-async def test_cancel_menu_stub_replies() -> None:
-    message = make_message(text=MENU_CANCEL)
-
-    await cancel_stub(message)
-
+async def test_contacts_replies_with_static_text() -> None:
+    message = make_message(text="📍 Адрес")
+    await show_contacts(message)
     message.answer.assert_awaited_once()
-    args, _ = message.answer.call_args
-    assert "🚧" in args[0] or "готовится" in args[0].lower()
+    text = message.answer.call_args.args[0]
+    assert "Drum Family" in text
+    assert "Комсомольский" in text
+
+
+async def test_prices_replies() -> None:
+    message = make_message(text="💳 Стоимость")
+    await show_prices(message)
+    message.answer.assert_awaited_once()
+    assert "Стоимость" in message.answer.call_args.args[0]
+
+
+async def test_faq_replies() -> None:
+    message = make_message(text="❓ Частые вопросы")
+    await show_faq(message)
+    message.answer.assert_awaited_once()
+    assert "Частые вопросы" in message.answer.call_args.args[0]
+
+
+async def test_admin_replies() -> None:
+    message = make_message(text="💬 Написать админу")
+    await show_admin(message)
+    message.answer.assert_awaited_once()
+    assert "@Drum_Family_admin" in message.answer.call_args.args[0]
+
+
+# ---------- menu_stub: fallback на неизвестные сообщения ----------
+
+
+async def test_fallback_legacy_about_button() -> None:
+    """Если кто-то нажмёт сохранённую кнопку «ℹ️ О школе» из старого
+    меню — выдаём ABOUT_TEXT, а не unknown-command."""
+    message = make_message(text=LEGACY_ABOUT)
+    await fallback(message)
+    message.answer.assert_awaited_once_with(texts.ABOUT_TEXT, parse_mode="HTML")
+
+
+async def test_fallback_unknown_text() -> None:
+    """На произвольный мусорный текст — UNKNOWN_COMMAND."""
+    message = make_message(text="какая-то ерунда")
+    await fallback(message)
+    message.answer.assert_awaited_once_with(texts.UNKNOWN_COMMAND)
 
 
 # ---------- profile ----------

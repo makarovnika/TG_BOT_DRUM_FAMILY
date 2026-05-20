@@ -25,6 +25,7 @@ from src.bot.handlers import (
     profile,
     registration,
     start,
+    static_info,
 )
 from src.bot.middlewares.deps import DepsMiddleware
 from src.config import Settings, get_settings
@@ -83,8 +84,15 @@ async def main() -> None:
     # описание поменялось — Telegram обновит, иначе ноп.
     await bot.set_my_commands(
         [
-            BotCommand(command="start", description="Главное меню / регистрация"),
-            BotCommand(command="cancel", description="Отменить текущий диалог"),
+            BotCommand(command="start", description="🥁 Начать"),
+            BotCommand(command="trial", description="Записаться на пробный"),
+            BotCommand(command="schedule", description="Моё расписание"),
+            BotCommand(command="prices", description="Стоимость занятий"),
+            BotCommand(command="contacts", description="Адрес и контакты"),
+            BotCommand(command="faq", description="Частые вопросы"),
+            BotCommand(command="admin", description="Написать администратору"),
+            BotCommand(command="profile", description="Мой профиль"),
+            BotCommand(command="cancel", description="Отменить текущее действие"),
             BotCommand(command="help", description="Подсказка по командам"),
         ]
     )
@@ -100,6 +108,7 @@ async def main() -> None:
     dp.include_router(profile.router)
     dp.include_router(my_bookings.router)
     dp.include_router(booking.router)
+    dp.include_router(static_info.router)
     dp.include_router(menu_stub.router)
 
     log.info("bot.starting", company_id=settings.yclients_company_id)

@@ -1,39 +1,32 @@
-"""Заглушки на пункты главного меню.
+"""Заглушка-fallback на любой текст в главном меню, не пойманный
+другими роутерами.
 
-Чтобы зарегистрированный пользователь, нажав на кнопку, не упирался в
-молчание бота. Реальная логика будет в:
-- booking-individual-003 (Записаться);
-- my-bookings-004 (Мои занятия + Отменить);
-- profile-005 (Мой профиль);
-- booking-group-006 (групповая ветка).
+Раньше тут жили заглушки на кнопки «🥁 Записаться», «📅 Мои занятия» и т. п.
+Теперь все эти кнопки имеют реальную реализацию (booking, my_bookings,
+static_info, profile). Поэтому модуль превратился в «неизвестная команда» —
+ловит любые сообщения, которые не подошли ни одному предыдущему роутеру.
 
-«О школе» — статический текст, можно сделать сразу.
+ВНИМАНИЕ: подключать строго ПОСЛЕДНИМ в `main.py`. Иначе он перехватит
+сообщения у других handler'ов.
 """
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.types import Message
 
-from src.bot.keyboards.main_menu import MENU_ABOUT, MENU_CANCEL
+from src.bot import texts
 
 router = Router(name="menu_stub")
 
-ABOUT_TEXT = (
-    "🥁 Drum Family Томск\n\n"
-    "Школа барабанов: индивидуальные и групповые занятия с тренерами.\n"
-    "Скоро здесь будет вся актуальная инфа, расписание и контакты."
-)
-
-CANCEL_STUB = (
-    "🚧 Отмена через эту кнопку готовится.\n\n"
-    "А пока — открой «📅 Мои занятия» и нажми «Отменить» под нужной записью."
-)
+# Старое название кнопки «О школе» осталось как алиас на /contacts:
+# некоторые пользователи могут помнить его. Если они напишут текст вручную —
+# отвечаем тем же ABOUT_TEXT, что и раньше.
+LEGACY_ABOUT = "ℹ️ О школе"
 
 
-@router.message(F.text == MENU_ABOUT)
-async def about(message: Message) -> None:
-    await message.answer(ABOUT_TEXT)
-
-
-@router.message(F.text == MENU_CANCEL)
-async def cancel_stub(message: Message) -> None:
-    await message.answer(CANCEL_STUB)
+@router.message()
+async def fallback(message: Message) -> None:
+    # Legacy: если кто-то тапнул сохранённую где-то старую кнопку «О школе»
+    if message.text == LEGACY_ABOUT:
+        await message.answer(texts.ABOUT_TEXT, parse_mode="HTML")
+        return
+    await message.answer(texts.UNKNOWN_COMMAND)

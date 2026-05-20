@@ -13,8 +13,10 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove
 
+from src.bot import texts
 from src.bot.keyboards.main_menu import main_menu_kb
 from src.bot.states.registration import RegistrationStates
+from src.bot.utils import escape_html
 from src.services.user_service import UserService
 
 router = Router(name="start")
@@ -29,22 +31,22 @@ async def cmd_start(
     await state.clear()
 
     if message.from_user is None:
-        # На всякий случай — теоретически в Telegram такого не бывает.
-        await message.answer("Не получилось определить тебя как пользователя Telegram.")
+        await message.answer(texts.REG_NO_USER)
         return
 
     existing = await user_service.find_by_telegram_id(message.from_user.id)
     if existing is not None:
         name = existing.full_name or "друг"
         await message.answer(
-            f"С возвращением, {name}! 🥁\nВыбери, что хочешь сделать.",
+            texts.START_WELCOME_REGISTERED.format(name=escape_html(name)),
+            parse_mode="HTML",
             reply_markup=main_menu_kb(),
         )
         return
 
     await message.answer(
-        "Привет! Я бот школы барабанов Drum Family Томск. 🥁\n\n"
-        "Давай знакомиться — как тебя зовут? Напиши имя сообщением.",
+        texts.START_WELCOME_NEW,
+        parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(RegistrationStates.waiting_for_name)

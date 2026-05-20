@@ -25,6 +25,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from src.bot import texts
 from src.bot.keyboards.booking import (
     CANCEL_DATA,
     CONFIRM_PREFIX,
@@ -71,7 +72,7 @@ async def start_booking(
 
     user = await user_service.find_by_telegram_id(message.from_user.id)
     if user is None or user.yclients_client_id is None:
-        await message.answer("Сначала пройди регистрацию — отправь /start.")
+        await message.answer(texts.BOOKING_NEED_REGISTRATION)
         return
 
     await state.clear()
@@ -80,18 +81,18 @@ async def start_booking(
         services = await yclients.get_services()
     except YClientsError as exc:
         log.warning("booking.services_error", error=str(exc))
-        await message.answer("Не получилось загрузить список услуг. Попробуй позже.")
+        await message.answer(texts.BOOKING_SERVICES_ERROR)
         return
 
     if not services:
-        await message.answer("Сейчас нет доступных услуг для записи.")
+        await message.answer(texts.BOOKING_NO_SERVICES)
         return
 
     await state.set_state(BookingStates.choosing_service)
     # Кэшируем `{id: title}` в FSM-data — на следующих шагах достанем без API.
     await state.update_data(services_cache={s.id: s.title for s in services})
     await message.answer(
-        "🥁 На какую услугу записываемся?",
+        texts.BOOKING_ASK_SERVICE,
         reply_markup=services_keyboard([(s.id, s.title) for s in services]),
     )
 
@@ -111,7 +112,7 @@ async def picked_service(
     services_cache: dict[int, str] = {int(k): v for k, v in data.get("services_cache", {}).items()}
     service_title = services_cache.get(service_id)
     if service_title is None:
-        await callback.answer("Услуга не найдена. Начни заново.", show_alert=True)
+        await callback.answer(texts.BOOKING_SERVICE_LOST, show_alert=True)
         await state.clear()
         return
 
@@ -119,12 +120,12 @@ async def picked_service(
         staff = await yclients.get_staff(service_ids=[service_id])
     except YClientsError as exc:
         log.warning("booking.staff_error", error=str(exc))
-        await callback.answer("Не получилось загрузить тренеров. Попробуй позже.", show_alert=True)
+        await callback.answer(texts.BOOKING_STAFF_ERROR, show_alert=True)
         await state.clear()
         return
 
     if not staff:
-        await callback.message.edit_text("Нет тренеров для этой услуги.")
+        await callback.message.edit_text(texts.BOOKING_NO_STAFF)
         await state.clear()
         await callback.answer()
         return
@@ -136,7 +137,7 @@ async def picked_service(
     )
     await state.set_state(BookingStates.choosing_staff)
     await callback.message.edit_text(
-        f"Услуга: <b>{escape_html(service_title)}</b>\n\nС каким тренером?",
+        texts.BOOKING_ASK_STAFF.format(service=escape_html(service_title)),
         parse_mode="HTML",
         reply_markup=staff_keyboard([(m.id, m.name) for m in staff]),
     )
@@ -158,7 +159,7 @@ async def picked_staff(
     staff_cache: dict[int, str] = {int(k): v for k, v in data.get("staff_cache", {}).items()}
     staff_name = staff_cache.get(staff_id)
     if staff_name is None:
-        await callback.answer("Тренер не найден. Начни заново.", show_alert=True)
+        await callback.answer(texts.BOOKING_STAFF_LOST, show_alert=True)
         await state.clear()
         return
 
@@ -173,16 +174,17 @@ async def picked_staff(
         )
     except YClientsError as exc:
         log.warning("booking.dates_error", error=str(exc))
-        await callback.answer("Не получилось загрузить даты. Попробуй позже.", show_alert=True)
+        await callback.answer(texts.BOOKING_DATES_ERROR, show_alert=True)
         await state.clear()
         return
 
     if not dates.booking_dates:
         await callback.message.edit_text(
-            f"Услуга: <b>{escape_html(data['service_title'])}</b>\n"
-            f"Тренер: <b>{escape_html(staff_name)}</b>\n\n"
-            f"Свободных дат на ближайшие {BOOK_HORIZON_DAYS} дней нет. "
-            "Загляни позже.",
+            texts.BOOKING_NO_DATES.format(
+                service=escape_html(data["service_title"]),
+                staff=escape_html(staff_name),
+                days=BOOK_HORIZON_DAYS,
+            ),
             parse_mode="HTML",
         )
         await state.clear()
@@ -192,9 +194,10 @@ async def picked_staff(
     await state.update_data(staff_id=staff_id, staff_name=staff_name)
     await state.set_state(BookingStates.choosing_date)
     await callback.message.edit_text(
-        f"Услуга: <b>{escape_html(data['service_title'])}</b>\n"
-        f"Тренер: <b>{escape_html(staff_name)}</b>\n\n"
-        "Выбери дату:",
+        texts.BOOKING_ASK_DATE.format(
+            service=escape_html(data["service_title"]),
+            staff=escape_html(staff_name),
+        ),
         parse_mode="HTML",
         reply_markup=dates_keyboard(dates.booking_dates),
     )
@@ -223,12 +226,12 @@ async def picked_date(
         )
     except YClientsError as exc:
         log.warning("booking.slots_error", error=str(exc))
-        await callback.answer("Не получилось загрузить слоты. Попробуй позже.", show_alert=True)
+        await callback.answer(texts.BOOKING_SLOTS_ERROR, show_alert=True)
         await state.clear()
         return
 
     if not slots:
-        await callback.answer("На эту дату свободных слотов не осталось.", show_alert=True)
+        await callback.answer(texts.BOOKING_NO_SLOTS, show_alert=True)
         return
 
     await state.update_data(date=date_iso)
@@ -237,10 +240,11 @@ async def picked_date(
     slot_pairs = [(s.time or "—", s.datetime or "") for s in slots if s.datetime]
 
     await callback.message.edit_text(
-        f"Услуга: <b>{escape_html(data['service_title'])}</b>\n"
-        f"Тренер: <b>{escape_html(data['staff_name'])}</b>\n"
-        f"Дата: <b>{date_iso}</b>\n\n"
-        "Выбери время:",
+        texts.BOOKING_ASK_TIME.format(
+            service=escape_html(data["service_title"]),
+            staff=escape_html(data["staff_name"]),
+            date=date_iso,
+        ),
         parse_mode="HTML",
         reply_markup=slots_keyboard(slot_pairs),
     )
@@ -261,11 +265,11 @@ async def picked_slot(callback: CallbackQuery, state: FSMContext) -> None:
     pretty_time = _format_iso(slot_iso)
 
     await callback.message.edit_text(
-        "Проверь, всё ли правильно:\n\n"
-        f"🥁 <b>{escape_html(data['service_title'])}</b>\n"
-        f"👤 {escape_html(data['staff_name'])}\n"
-        f"🕐 {pretty_time}\n\n"
-        "Записываемся?",
+        texts.BOOKING_CONFIRM.format(
+            service=escape_html(data["service_title"]),
+            staff=escape_html(data["staff_name"]),
+            when=pretty_time,
+        ),
         parse_mode="HTML",
         reply_markup=confirm_keyboard(),
     )
@@ -286,7 +290,7 @@ async def confirm_booking(
 
     user = await user_service.find_by_telegram_id(callback.from_user.id)
     if user is None or user.full_name is None or user.phone is None:
-        await callback.answer("Профиль неполный. Сделай /start.", show_alert=True)
+        await callback.answer(texts.BOOKING_PROFILE_INCOMPLETE, show_alert=True)
         await state.clear()
         return
 
@@ -295,25 +299,20 @@ async def confirm_booking(
     # не хранится, поэтому тянем актуальный из YClients-карточки клиента.
     # Если в YClients email тоже не заполнен — попросим админа добавить.
     if user.yclients_client_id is None:
-        await callback.answer("Профиль не привязан к YClients. Сделай /start.", show_alert=True)
+        await callback.answer(texts.BOOKING_NOT_LINKED, show_alert=True)
         await state.clear()
         return
     try:
         yc_client = await yclients.get_client_by_id(user.yclients_client_id)
     except YClientsError as exc:
         log.warning("booking.get_client_error", error=str(exc))
-        await callback.message.edit_text(
-            "Не получилось проверить твою карточку в YClients. Попробуй позже."
-        )
+        await callback.message.edit_text(texts.BOOKING_CLIENT_FETCH_ERROR)
         await state.clear()
         await callback.answer()
         return
 
     if not yc_client.email:
-        await callback.message.edit_text(
-            "❌ В твоей карточке в YClients не указан email — школа требует "
-            "его для онлайн-записи. Попроси админа добавить email и попробуй снова."
-        )
+        await callback.message.edit_text(texts.BOOKING_EMAIL_REQUIRED, parse_mode="HTML")
         await state.clear()
         await callback.answer()
         return
@@ -336,7 +335,8 @@ async def confirm_booking(
         log.warning("booking.book_error", error=str(exc))
         # 422 «уже занято», SMS-required и т. п. — показываем человекочитаемо.
         await callback.message.edit_text(
-            f"Не получилось записать: {exc}.\n\nПопробуй другой слот или напиши админу."
+            texts.BOOKING_FAILED.format(error=escape_html(str(exc))),
+            parse_mode="HTML",
         )
         await state.clear()
         await callback.answer()
@@ -347,17 +347,17 @@ async def confirm_booking(
 
     pretty_time = _format_iso(data["slot_datetime"])
     await callback.message.edit_text(
-        "✅ Записал!\n\n"
-        f"🥁 <b>{escape_html(data['service_title'])}</b>\n"
-        f"👤 {escape_html(data['staff_name'])}\n"
-        f"🕐 {pretty_time}\n\n"
-        "До встречи в школе! Список записей — в «📅 Мои занятия».",
+        texts.BOOKING_SUCCESS.format(
+            service=escape_html(data["service_title"]),
+            staff=escape_html(data["staff_name"]),
+            when=pretty_time,
+        ),
         parse_mode="HTML",
     )
     await state.clear()
     await callback.answer("Записано")
     # Возвращаем главное меню следующим сообщением
-    await callback.message.answer("Что дальше?", reply_markup=main_menu_kb())
+    await callback.message.answer(texts.BOOKING_WHAT_NEXT, reply_markup=main_menu_kb())
 
 
 @router.callback_query(F.data == CANCEL_DATA)
@@ -367,8 +367,8 @@ async def cancel_booking(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     await state.clear()
-    await callback.message.edit_text("Окей, запись отменена.")
-    await callback.message.answer("Что дальше?", reply_markup=main_menu_kb())
+    await callback.message.edit_text(texts.BOOKING_CANCELLED)
+    await callback.message.answer(texts.BOOKING_WHAT_NEXT, reply_markup=main_menu_kb())
     await callback.answer()
 
 
@@ -383,7 +383,7 @@ async def cancel_booking(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message(BookingStates.choosing_slot)
 @router.message(BookingStates.confirming)
 async def booking_unrecognized(message: Message) -> None:
-    await message.answer("Нажми одну из кнопок выше, или /cancel — чтобы выйти из записи.")
+    await message.answer(texts.BOOKING_UNRECOGNIZED)
 
 
 def _format_iso(iso: str) -> str:
