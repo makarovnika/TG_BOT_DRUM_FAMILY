@@ -17,6 +17,7 @@ import structlog
 from aiogram import F, Router
 from aiogram.types import Message
 
+from src.bot import texts
 from src.bot.keyboards.main_menu import MENU_PROFILE
 from src.bot.utils import escape_html
 from src.services.user_service import UserService
@@ -40,23 +41,18 @@ async def show_profile(
 
     user = await user_service.find_by_telegram_id(message.from_user.id)
     if user is None:
-        await message.answer("Похоже, ты не зарегистрирован. Отправь /start, и я тебя добавлю.")
+        await message.answer(texts.PROFILE_NEED_REGISTRATION)
         return
 
     if user.yclients_client_id is None:
-        # Странный кейс — есть User в SQLite, но без привязки. Не должен
-        # случаться при штатном пути, но обрабатываем.
-        await message.answer(
-            "Я тебя помню, но не вижу твою карточку в YClients. "
-            "Напиши админу школы или сделай /start заново."
-        )
+        await message.answer(texts.PROFILE_NOT_LINKED)
         return
 
     try:
         client = await yclients.get_client_by_id(user.yclients_client_id)
     except YClientsError as exc:
         log.warning("profile.yclients_error", error=str(exc))
-        await message.answer("Не получилось загрузить твой профиль из YClients. Попробуй позже.")
+        await message.answer(texts.PROFILE_FETCH_ERROR)
         return
 
     await message.answer(_format_profile(client), parse_mode="HTML")

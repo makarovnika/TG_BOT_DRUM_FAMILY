@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Баннер «Расписание» — 1280×640.
+  ТЗ §6.4: чёрный фон, «Твой ритм недели» (слово «ритм» — #12B1EB),
+  подзаголовок «Расписание и напоминания», тонкая «осциллограмма» под
+  заголовком, нижняя полоса #0A91C4.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#000000"/>
+
+  <!-- DF-марка -->
+  <g transform="translate(1160 32)">
+    <rect width="88" height="88" rx="14" fill="#0A91C4"/>
+    <text x="44" y="60"
+          text-anchor="middle"
+          font-family="Onest, system-ui, sans-serif"
+          font-weight="900"
+          font-size="42"
+          fill="#FFFFFF">DF</text>
+  </g>
+
+  <!-- заголовок -->
+  <text x="64" y="290"
+        font-family="Onest, system-ui, sans-serif"
+        font-weight="900"
+        font-size="124"
+        letter-spacing="-4"
+        fill="#FFFFFF">Твой</text>
+  <text x="64" y="415"
+        font-family="Onest, system-ui, sans-serif"
+        font-weight="900"
+        font-size="124"
+        letter-spacing="-4">
+    <tspan fill="#12B1EB">ритм</tspan>
+    <tspan fill="#FFFFFF"> недели</tspan>
+  </text>
+
+  <!-- «осциллограмма» — путь под заголовком -->
+  <path d="M 64 460
+           Q 100 440 130 460
+           T 200 460
+           T 270 460
+           T 340 460
+           T 410 460
+           T 480 460
+           T 550 460
+           T 620 460"
+        fill="none"
+        stroke="#0A91C4"
+        stroke-width="2"
+        opacity="0.6"/>
+
+  <!-- подзаголовок -->
+  <text x="64" y="510"
+        font-family="Onest, system-ui, sans-serif"
+        font-weight="500"
+        font-size="32"
+        fill="#FFFFFF"
+        opacity="0.85">Расписание и напоминания</text>
+
+  <!-- нижняя полоса -->
+  <rect x="0" y="628" width="1280" height="12" fill="#0A91C4"/>
+</svg>

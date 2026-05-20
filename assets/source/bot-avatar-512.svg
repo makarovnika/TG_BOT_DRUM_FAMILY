@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Аватар бота 512×512.
+  Соответствует ТЗ §5: сплошной фон #0A91C4, компактный DF-маркер в центре.
+  Без подписей «Drum Family» — буквы становятся нечитаемыми в кружке Telegram.
+
+  Это упрощённая версия. Если есть оригинальный векторный DF-логотип из
+  брендбука — замени группу <g id="df-mark"> на импорт оригинала, сохранив
+  bbox 360×360 в центре (256, 256).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- фон -->
+  <rect width="512" height="512" fill="#0A91C4"/>
+
+  <!-- стилизованный «барабан» — два круга + 5 «болтов»-кружочков -->
+  <g id="df-mark" transform="translate(256 256)">
+    <!-- корпус барабана -->
+    <circle r="160" fill="none" stroke="#FFFFFF" stroke-width="14"/>
+    <circle r="124" fill="none" stroke="#FFFFFF" stroke-width="6" opacity="0.6"/>
+    <!-- «болты» по периметру -->
+    <g fill="#FFFFFF">
+      <circle cx="0"    cy="-145" r="9"/>
+      <circle cx="138"  cy="-45"  r="9"/>
+      <circle cx="85"   cy="118"  r="9"/>
+      <circle cx="-85"  cy="118"  r="9"/>
+      <circle cx="-138" cy="-45"  r="9"/>
+    </g>
+    <!-- «палочки» — две скрещённые линии за «DF» -->
+    <g stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" opacity="0.55">
+      <line x1="-95" y1="-95" x2="95"  y2="95"/>
+      <line x1="95"  y1="-95" x2="-95" y2="95"/>
+    </g>
+    <!-- DF -->
+    <text x="0" y="22"
+          text-anchor="middle"
+          font-family="Onest, 'Onest Black', system-ui, sans-serif"
+          font-weight="900"
+          font-size="138"
+          fill="#FFFFFF"
+          letter-spacing="-4">DF</text>
+  </g>
+</svg>

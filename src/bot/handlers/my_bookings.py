@@ -57,7 +57,7 @@ async def show_my_bookings(
 
     user = await user_service.find_by_telegram_id(message.from_user.id)
     if user is None or user.yclients_client_id is None:
-        await message.answer("Похоже, ты не зарегистрирован. Отправь /start, и я тебя добавлю.")
+        await message.answer(texts.MYBOOK_NEED_REGISTRATION)
         return
 
     # YClients принимает start_date/end_date, но возвращает в т.ч. сегодняшние
@@ -74,21 +74,19 @@ async def show_my_bookings(
         )
     except YClientsError as exc:
         log.warning("my_bookings.yclients_error", error=str(exc))
-        await message.answer("Не получилось загрузить занятия из YClients. Попробуй позже.")
+        await message.answer(texts.MYBOOK_FETCH_ERROR)
         return
 
     future = [r for r in records if _is_future(r, now)]
 
     if not future:
-        await message.answer(
-            "📅 На ближайшие 2 месяца записей нет.\n\nЗапиши себя через «🥁 Записаться»."
-        )
+        await message.answer(texts.MYBOOK_EMPTY)
         return
 
     # YClients возвращает записи свежими сверху, нам же удобнее по возрастанию.
     future.sort(key=lambda r: r.datetime or r.date or "")
 
-    await message.answer(f"📅 У тебя {len(future)} ближайших занятий:")
+    await message.answer(texts.MYBOOK_SUMMARY.format(count=len(future)))
     for record in future:
         text = _format_record(record)
         hours_left = _hours_until(record, now)
@@ -96,10 +94,7 @@ async def show_my_bookings(
             kb = cancel_button(record.id)
             await message.answer(text, parse_mode="HTML", reply_markup=kb)
         else:
-            text += (
-                f"\n\n<i>До начала меньше {CANCEL_HOURS_THRESHOLD} ч — "
-                "отмена через бота недоступна. Позвони в школу.</i>"
-            )
+            text += texts.MYBOOK_CARD_NO_CANCEL.format(hours=CANCEL_HOURS_THRESHOLD)
             await message.answer(text, parse_mode="HTML")
 
 
@@ -144,7 +139,7 @@ async def do_cancel(
         await yclients.cancel_record(record_id)
     except YClientsError as exc:
         log.warning("cancel.yclients_error", record_id=record_id, error=str(exc))
-        await callback.answer("Не получилось отменить. Попробуй позже.", show_alert=True)
+        await callback.answer(texts.MYBOOK_CANCEL_FAILED, show_alert=True)
         return
 
     # `html_text` сохраняет HTML-разметку оригинального сообщения; если его
@@ -152,12 +147,12 @@ async def do_cancel(
     original = callback.message.html_text or callback.message.text or ""
     try:
         await callback.message.edit_text(
-            original + "\n\n<b>❌ Запись отменена.</b>",
+            original + "\n\n<b>" + texts.MYBOOK_CANCEL_DONE + "</b>",
             parse_mode="HTML",
         )
     except TelegramBadRequest:
         # Сообщение могло устареть или быть удалено — отправим новое.
-        await callback.message.answer("Запись отменена.")
+        await callback.message.answer(texts.MYBOOK_CANCEL_NEW_MSG)
 
     await callback.answer("Отменено")
 
@@ -167,7 +162,11 @@ def _format_record(r: Record) -> str:
     when = _format_datetime(r)
     services = ", ".join(s.title for s in r.services) or "Занятие"
     staff = r.staff.name if r.staff else "Любой тренер"
-    return f"🥁 <b>{escape_html(services)}</b>\n👤 {escape_html(staff)}\n🕐 {when}"
+    return texts.MYBOOK_CARD.format(
+        service=escape_html(services),
+        staff=escape_html(staff),
+        when=when,
+    )
 
 
 def _format_datetime(r: Record) -> str:
