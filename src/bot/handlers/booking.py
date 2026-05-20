@@ -26,7 +26,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from src.bot import texts
-from src.bot.assets import banner
+from src.bot.assets import banner, remember_banner
 from src.bot.keyboards.booking import (
     CANCEL_DATA,
     CONFIRM_PREFIX,
@@ -95,11 +95,12 @@ async def start_booking(
     await state.update_data(services_cache={s.id: s.title for s in services})
     # Баннер «Прокачай себя!» — только на входе в FSM. Дальше едитим уже без
     # фото, потому что aiogram не позволяет менять photo через edit_text.
-    await message.answer_photo(
+    sent = await message.answer_photo(
         photo=banner("trial"),
         caption=texts.BOOKING_ASK_SERVICE,
         reply_markup=services_keyboard([(s.id, s.title) for s in services]),
     )
+    remember_banner("trial", sent)
 
 
 @router.callback_query(BookingStates.choosing_service, F.data.startswith(f"{SERVICE_PREFIX}:"))

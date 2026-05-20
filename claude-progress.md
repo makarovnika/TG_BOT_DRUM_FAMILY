@@ -26,6 +26,48 @@
 
 ## Session Log
 
+### Session 011 — FAQ-карусель + file_id-кэш для баннеров (2026-05-20)
+
+- Goal: продолжить ТЗ без поднятия бота (по запросу Никиты).
+- Completed:
+  - **FAQ-карусель (ТЗ §8.10)**:
+    - `src/bot/faq_data.py` — 8 типовых вопросов школы (placeholder
+      content, заменится текстом с drumfamily.ru одной правкой).
+    - `src/bot/keyboards/faq.py` — клавиатуры списка и карточки.
+    - `src/bot/handlers/faq.py` — Router с 3 handler'ами:
+      `show_faq_list`, `faq_open_item`, `faq_back_to_list`. Все используют
+      edit_text (не edit_caption — FAQ работает с обычными сообщениями).
+    - `static_info.show_faq` удалён, его заменил полноценный FAQ-flow.
+    - `texts.FAQ_TEXT_PLACEHOLDER` оставлен как fallback в `texts.py`.
+    - `main.py` подключает `faq.router` между booking и static_info.
+    - 8 тестов в `tests/test_faq.py` — happy path, unknown id,
+      back-навигация, защита от дубликатов id и слишком длинных
+      callback_data.
+  - **file_id-кэш для баннеров** (был отмечен как «премий-оптимизация»
+    в предыдущем аудите):
+    - `src/bot/assets.py` — модульный синглтон `_banner_cache: dict[str, str]`,
+      функция `banner(name)` возвращает либо строку file_id (из кэша),
+      либо `FSInputFile` для первой отправки.
+    - `remember_banner(name, message)` — после `answer_photo` сохраняет
+      file_id из ответа Telegram.
+    - `clear_banner_cache()` — для тестов.
+    - Все 4 handler'а (start, booking, static_info, my_bookings) теперь
+      кэшируют file_id после первой отправки. На N-й отправке Telegram
+      не получает PNG, только строку — это в разы быстрее и не грузит сеть.
+    - 5 тестов в `tests/test_assets.py` дополнительно к 4 существующим.
+- Verification run: `uv run pytest -q` — 91 → 103 (+8 на FAQ, +5 на cache,
+  -1 удалён старый show_faq). lint + format чисты.
+- Files / commits: новые `src/bot/faq_data.py`,
+  `src/bot/keyboards/faq.py`, `src/bot/handlers/faq.py`,
+  `tests/test_faq.py`; правки `src/bot/assets.py`, `tests/test_assets.py`,
+  `src/bot/handlers/{start,booking,static_info,my_bookings}.py`,
+  `src/main.py`. Коммит — текущий.
+- Known risk:
+  - FAQ-контент — placeholder. Когда придёт текст с drumfamily.ru —
+    одна правка `FAQ_ITEMS` в `src/bot/faq_data.py`.
+  - При рестарте бота кэш file_id сбрасывается — это намеренно
+    (не хотим SQLite-таблицу ради такой оптимизации).
+
 ### Session 010 — критический аудит после Phase 1 (2026-05-20)
 
 - Goal: пройти критическим взглядом по результату Phase 1, починить найденное.

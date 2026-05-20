@@ -79,15 +79,6 @@
       ],
       "notes": "Активный режим — legacy (YCLIENTS_USER_LOGIN + YCLIENTS_USER_PASSWORD в .env). YCLIENTS_USER_TOKEN закомментирован, но значение сохранено в .env на случай, если когда-то получится установить интеграцию через маркетплейс."
     },
-      "verification": [
-        "В тестовой Telegram-сессии: новый пользователь — проходит FSM регистрации.",
-        "В YClients появляется/находится клиент с указанным телефоном.",
-        "В SQLite есть запись User(telegram_id, yclients_client_id).",
-        "Повторный /start — сразу главное меню, без повторного ask_name."
-      ],
-      "evidence": [],
-      "notes": "FSM-состояния — в src/bot/states/. Маппинг — в src/db/models.py."
-    },
     {
       "id": "booking-individual-003",
       "priority": 3,
@@ -217,9 +208,12 @@
       "remaining_for_phase_2": [
         "ТЗ §7: аватар, bio, about в @BotFather (это действия Никиты, не код).",
         "Trial-FSM с выбором возрастной группы (ТЗ §9.2).",
-        "FAQ-карточки с навигацией (сейчас placeholder).",
         "Cтоимость — наполнить реальными цифрами.",
         "MarkdownV2 вместо HTML (опционально, визуально одно и то же)."
+      ],
+      "done_after_initial_release": [
+        "2026-05-20: FAQ-карточки с навигацией (ТЗ §8.10) — 8 вопросов-плейсхолдеров с человеческими ответами; src/bot/handlers/faq.py + src/bot/faq_data.py + src/bot/keyboards/faq.py + 8 тестов. Контент-плейсхолдер заменяется одним правкой faq_data.FAQ_ITEMS, когда придёт текст с drumfamily.ru.",
+        "2026-05-20: file_id-кэш для баннеров — после первой отправки PNG Telegram возвращает file_id, бот его помнит и в следующих send_photo шлёт строку вместо файла. -100% bandwidth на повторные отправки. См. src/bot/assets.py + 5 тестов."
       ],
       "notes": "Phase 2 ТЗ (напоминания 24ч/1ч, обратная связь после пробного, Mini App) — отдельные фичи, требуют scheduler/web-инфраструктуру."
     }

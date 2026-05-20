@@ -13,12 +13,11 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from src.bot import texts
-from src.bot.assets import banner
+from src.bot.assets import banner, remember_banner
 from src.bot.keyboards.contacts import admin_keyboard, contacts_keyboard
 from src.bot.keyboards.main_menu import (
     MENU_ADMIN,
     MENU_CONTACTS,
-    MENU_FAQ,
     MENU_PRICES,
 )
 
@@ -33,12 +32,13 @@ router = Router(name="static_info")
 async def show_contacts(message: Message) -> None:
     # Баннер «200 м² драйва» + адрес/телефон/часы в caption + 3 URL-кнопки
     # (карта, звонок, чат с админом) по ТЗ §9.4.
-    await message.answer_photo(
+    sent = await message.answer_photo(
         photo=banner("contacts"),
         caption=texts.CONTACTS_TEXT,
         parse_mode="HTML",
         reply_markup=contacts_keyboard(),
     )
+    remember_banner("contacts", sent)
 
 
 # ---------- Стоимость ----------
@@ -50,13 +50,9 @@ async def show_prices(message: Message) -> None:
     await message.answer(texts.PRICES_TEXT_PLACEHOLDER, parse_mode="HTML")
 
 
-# ---------- FAQ ----------
-
-
-@router.message(Command("faq"))
-@router.message(F.text == MENU_FAQ)
-async def show_faq(message: Message) -> None:
-    await message.answer(texts.FAQ_TEXT_PLACEHOLDER, parse_mode="HTML")
+# FAQ перенесён в src/bot/handlers/faq.py (карусель с вопросами по ТЗ §8.10).
+# Старый плейсхолдер `texts.FAQ_TEXT_PLACEHOLDER` оставлен в texts.py как
+# fallback, но handler здесь больше не регистрируется.
 
 
 # ---------- Админ ----------

@@ -38,7 +38,6 @@ from src.bot.handlers.start import cmd_start
 from src.bot.handlers.static_info import (
     show_admin,
     show_contacts,
-    show_faq,
     show_prices,
 )
 from src.bot.states.booking import BookingStates
@@ -286,11 +285,7 @@ async def test_prices_replies() -> None:
     assert "Стоимость" in message.answer.call_args.args[0]
 
 
-async def test_faq_replies() -> None:
-    message = make_message(text="❓ Частые вопросы")
-    await show_faq(message)
-    message.answer.assert_awaited_once()
-    assert "Частые вопросы" in message.answer.call_args.args[0]
+# FAQ переехал в src/bot/handlers/faq.py (см. tests/test_faq.py).
 
 
 async def test_admin_replies() -> None:

@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove
 
 from src.bot import texts
-from src.bot.assets import banner
+from src.bot.assets import banner, remember_banner
 from src.bot.keyboards.main_menu import main_menu_kb
 from src.bot.states.registration import RegistrationStates
 from src.bot.utils import escape_html
@@ -48,10 +48,11 @@ async def cmd_start(
     # Для нового пользователя — баннер «Стань частью барабанной семьи» с
     # приветственным текстом в caption. ReplyKeyboard убираем, чтобы во
     # время ввода имени не маячило главное меню.
-    await message.answer_photo(
+    sent = await message.answer_photo(
         photo=banner("welcome"),
         caption=texts.START_WELCOME_NEW,
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
+    remember_banner("welcome", sent)
     await state.set_state(RegistrationStates.waiting_for_name)
