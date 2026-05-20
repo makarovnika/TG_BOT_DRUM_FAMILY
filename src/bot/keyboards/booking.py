@@ -12,12 +12,23 @@ from datetime import date as date_cls
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 # Префиксы callback_data
+AGE_PREFIX = "bk_age"
 SERVICE_PREFIX = "bk_svc"
 STAFF_PREFIX = "bk_stf"
 DATE_PREFIX = "bk_dt"
 SLOT_PREFIX = "bk_sl"
 CONFIRM_PREFIX = "bk_cnf"
 CANCEL_DATA = "bk_cancel"
+
+# Возрастные группы (ТЗ §9.2). id используется в callback_data, label —
+# на кнопке. Порядок здесь = порядок отображения.
+AGE_GROUPS: tuple[tuple[str, str], ...] = (
+    ("kid", "🧒 Ребёнку 7–12"),
+    ("teen", "🎸 Подростку 13–17"),
+    ("student", "🎓 Студенту 18–25"),
+    ("adult", "🙋 Взрослому 25+"),
+)
+AGE_GROUP_LABELS: dict[str, str] = dict(AGE_GROUPS)
 
 _MONTHS_RU = (
     "янв",
@@ -37,6 +48,21 @@ _MONTHS_RU = (
 
 def _row_cancel() -> list[InlineKeyboardButton]:
     return [InlineKeyboardButton(text="↩️ Отмена", callback_data=CANCEL_DATA)]
+
+
+def age_keyboard() -> InlineKeyboardMarkup:
+    """4 возрастные группы по 2 в ряд (ТЗ §9.2)."""
+    rows: list[list[InlineKeyboardButton]] = []
+    cur: list[InlineKeyboardButton] = []
+    for age_id, label in AGE_GROUPS:
+        cur.append(InlineKeyboardButton(text=label, callback_data=f"{AGE_PREFIX}:{age_id}"))
+        if len(cur) == 2:
+            rows.append(cur)
+            cur = []
+    if cur:
+        rows.append(cur)
+    rows.append(_row_cancel())
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def services_keyboard(services: list[tuple[int, str]]) -> InlineKeyboardMarkup:

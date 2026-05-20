@@ -28,12 +28,15 @@ from aiogram.types import CallbackQuery, Message
 from src.bot import texts
 from src.bot.assets import banner, remember_banner
 from src.bot.keyboards.booking import (
+    AGE_GROUP_LABELS,
+    AGE_PREFIX,
     CANCEL_DATA,
     CONFIRM_PREFIX,
     DATE_PREFIX,
     SERVICE_PREFIX,
     SLOT_PREFIX,
     STAFF_PREFIX,
+    age_keyboard,
     confirm_keyboard,
     dates_keyboard,
     post_booking_keyboard,
@@ -64,10 +67,12 @@ async def start_booking(
     user_service: UserService,
     yclients: YClientsClient,
 ) -> None:
-    """Точка входа FSM записи.
+    """Точка входа FSM записи (ТЗ §8.2 + §9.2).
 
-    Тянем услуги один раз, кладём в FSM-data `{id: title}` — на следующих
-    шагах не нужно повторно дёргать /book_services.
+    Показываем баннер «Прокачай себя!» + текст про пробный + 4 кнопки
+    возрастных групп. Услуги тянем уже на следующем шаге (после picked_age),
+    потому что нет смысла дёргать API, пока пользователь не подтвердил
+    намерение записываться.
     """
     if message.from_user is None:
         return
@@ -77,30 +82,65 @@ async def start_booking(
         await message.answer(texts.BOOKING_NEED_REGISTRATION)
         return
 
+    # yclients не нужен на этом шаге — выбор возраста локальный. Передан
+    # для совместимости с aiogram DI, чтобы не пересобирать сигнатуру.
+    del yclients
+
     await state.clear()
+    await state.set_state(BookingStates.choosing_age)
+    sent = await message.answer_photo(
+        photo=banner("trial"),
+        caption=texts.BOOKING_ASK_AGE,
+        parse_mode="HTML",
+        reply_markup=age_keyboard(),
+    )
+    remember_banner("trial", sent)
+
+
+@router.callback_query(BookingStates.choosing_age, F.data.startswith(f"{AGE_PREFIX}:"))
+async def picked_age(
+    callback: CallbackQuery,
+    state: FSMContext,
+    yclients: YClientsClient,
+) -> None:
+    """Возраст выбран — тянем услуги и переходим к выбору услуги."""
+    if callback.data is None or callback.message is None:
+        await callback.answer()
+        return
+    age_id = callback.data.split(":", 1)[1]
+    age_label = AGE_GROUP_LABELS.get(age_id)
+    if age_label is None:
+        await callback.answer("Возраст не распознан. Начни заново.", show_alert=True)
+        await state.clear()
+        return
 
     try:
         services = await yclients.get_services()
     except YClientsError as exc:
         log.warning("booking.services_error", error=str(exc))
-        await message.answer(texts.BOOKING_SERVICES_ERROR)
+        await callback.message.edit_caption(caption=texts.BOOKING_SERVICES_ERROR)
+        await state.clear()
+        await callback.answer()
         return
 
     if not services:
-        await message.answer(texts.BOOKING_NO_SERVICES)
+        await callback.message.edit_caption(caption=texts.BOOKING_NO_SERVICES)
+        await state.clear()
+        await callback.answer()
         return
 
+    await state.update_data(
+        age_id=age_id,
+        age_label=age_label,
+        services_cache={s.id: s.title for s in services},
+    )
     await state.set_state(BookingStates.choosing_service)
-    # Кэшируем `{id: title}` в FSM-data — на следующих шагах достанем без API.
-    await state.update_data(services_cache={s.id: s.title for s in services})
-    # Баннер «Прокачай себя!» — только на входе в FSM. Дальше едитим уже без
-    # фото, потому что aiogram не позволяет менять photo через edit_text.
-    sent = await message.answer_photo(
-        photo=banner("trial"),
-        caption=texts.BOOKING_ASK_SERVICE,
+    await callback.message.edit_caption(
+        caption=texts.BOOKING_ASK_SERVICE_AFTER_AGE.format(age=escape_html(age_label)),
+        parse_mode="HTML",
         reply_markup=services_keyboard([(s.id, s.title) for s in services]),
     )
-    remember_banner("trial", sent)
+    await callback.answer()
 
 
 @router.callback_query(BookingStates.choosing_service, F.data.startswith(f"{SERVICE_PREFIX}:"))
@@ -350,7 +390,12 @@ async def confirm_booking(
         return
 
     record_id = result[0].id if result else None
-    log.info("booking.created", record_id=record_id, telegram_id=user.telegram_id)
+    log.info(
+        "booking.created",
+        record_id=record_id,
+        telegram_id=user.telegram_id,
+        age_group=data.get("age_id"),
+    )
 
     pretty_time = _format_iso(data["slot_datetime"])
     # ТЗ §9.5: под подтверждением — inline-кнопки «Отменить» и «Маршрут».

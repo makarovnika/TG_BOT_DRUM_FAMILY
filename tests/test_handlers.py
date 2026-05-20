@@ -19,6 +19,7 @@ from src.bot import texts
 from src.bot.handlers.booking import (
     booking_unrecognized,
     cancel_booking,
+    picked_age,
     picked_service,
     picked_slot,
     start_booking,
@@ -468,27 +469,61 @@ async def test_start_booking_for_new_user_redirects_to_registration() -> None:
     assert "/start" in message.answer.call_args.args[0]
 
 
-async def test_start_booking_for_registered_user_sets_state_and_caches_services() -> None:
-    message = make_message(text="🥁 Записаться")
+async def test_start_booking_for_registered_user_goes_to_age_step() -> None:
+    """ТЗ §9.2: первый шаг FSM — выбор возрастной группы, не услуги.
+    Услуги тянем ТОЛЬКО после выбора возраста (в picked_age)."""
+    message = make_message(text="🥁 Пробный урок")
     state = make_state()
     user_service = AsyncMock()
     user_service.find_by_telegram_id.return_value = User(telegram_id=12345, yclients_client_id=42)
     yclients = AsyncMock()
-    yclients.get_services.return_value = [
-        Service(id=111, title="Услуга один"),
-        Service(id=222, title="Услуга два"),
-    ]
 
     await start_booking(message, state, user_service, yclients)
 
-    state.clear.assert_awaited_once()  # очистили любой предыдущий FSM
-    state.set_state.assert_awaited_once_with(BookingStates.choosing_service)
-    # Кэш услуг положен в FSM data — пригодится в picked_service
-    state.update_data.assert_awaited_once_with(
-        services_cache={111: "Услуга один", 222: "Услуга два"}
-    )
-    # Старт booking-FSM теперь отправляет trial-баннер с inline-кнопками.
+    state.clear.assert_awaited_once()
+    # Теперь первый state — choosing_age, не choosing_service
+    state.set_state.assert_awaited_once_with(BookingStates.choosing_age)
+    # YClients.get_services НЕ дёргаем на этом шаге — экономим API-вызов
+    # если пользователь не дойдёт до выбора услуги.
+    yclients.get_services.assert_not_called()
+    # update_data не нужен — services_cache теперь кладётся в picked_age.
+    state.update_data.assert_not_called()
     message.answer_photo.assert_awaited_once()
+
+
+async def test_picked_age_advances_to_service_and_fetches_services() -> None:
+    """После выбора возраста — get_services + переход в choosing_service."""
+    callback = make_callback(data="bk_age:kid")
+    state = make_state(BookingStates.choosing_age)
+    yclients = AsyncMock()
+    yclients.get_services.return_value = [
+        Service(id=111, title="Пробный"),
+        Service(id=222, title="Персональная"),
+    ]
+
+    await picked_age(callback, state, yclients)
+
+    yclients.get_services.assert_awaited_once()
+    state.set_state.assert_awaited_once_with(BookingStates.choosing_service)
+    # age_id, age_label и services_cache попали в FSM data
+    call = state.update_data.await_args_list[0]
+    assert call.kwargs["age_id"] == "kid"
+    assert call.kwargs["age_label"] == "🧒 Ребёнку 7–12"
+    assert call.kwargs["services_cache"] == {111: "Пробный", 222: "Персональная"}
+    callback.message.edit_caption.assert_awaited_once()
+
+
+async def test_picked_age_unknown_id_aborts() -> None:
+    """Устаревший / битый age_id — alert + clear, без API-вызова."""
+    callback = make_callback(data="bk_age:martian")
+    state = make_state(BookingStates.choosing_age)
+    yclients = AsyncMock()
+
+    await picked_age(callback, state, yclients)
+
+    yclients.get_services.assert_not_called()
+    state.clear.assert_awaited_once()
+    callback.answer.assert_awaited_once()
 
 
 async def test_picked_service_uses_cache_and_advances_to_staff() -> None:
