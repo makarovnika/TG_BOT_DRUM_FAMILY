@@ -115,7 +115,7 @@ async def confirm_cancel(callback: CallbackQuery) -> None:
         return
     record_id = int(callback.data.split(":", 1)[1])
     await callback.message.edit_reply_markup(reply_markup=cancel_confirm_keyboard(record_id))
-    await callback.answer("Точно отменить?")
+    await callback.answer(texts.TOAST_CONFIRM_CANCEL)
 
 
 @router.callback_query(F.data.startswith(f"{CANCEL_DECLINE_PREFIX}:"))
@@ -130,7 +130,7 @@ async def cancel_declined(callback: CallbackQuery) -> None:
         return
     record_id = int(callback.data.split(":", 1)[1])
     await callback.message.edit_reply_markup(reply_markup=cancel_button(record_id))
-    await callback.answer("Окей, оставил запись")
+    await callback.answer(texts.TOAST_CANCEL_KEPT)
 
 
 @router.callback_query(F.data.startswith(f"{CANCEL_CONFIRM_PREFIX}:"))
@@ -163,7 +163,7 @@ async def do_cancel(
         # Сообщение могло устареть или быть удалено — отправим новое.
         await callback.message.answer(texts.MYBOOK_CANCEL_NEW_MSG)
 
-    await callback.answer("Отменено")
+    await callback.answer(texts.TOAST_CANCEL_DONE)
 
 
 def _format_record(r: Record) -> str:

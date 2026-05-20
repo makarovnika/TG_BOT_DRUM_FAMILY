@@ -23,12 +23,6 @@ MENU_CONTACTS = "📍 Адрес"
 MENU_FAQ = "❓ Частые вопросы"
 MENU_ADMIN = "💬 Написать админу"
 
-# Старые названия для обратной совместимости (на случай если где-то ещё используются).
-# В новом меню их нет.
-MENU_CANCEL = "❌ Отменить запись"  # не в меню, оставлено как константа на legacy-stub
-MENU_PROFILE = "👤 Мой профиль"  # не в меню, доступ через /profile
-MENU_ABOUT = "ℹ️ О школе"  # не в меню, доступ через /contacts
-
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(

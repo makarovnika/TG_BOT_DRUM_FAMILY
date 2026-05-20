@@ -14,6 +14,7 @@ from aiogram.types import Message
 
 from src.bot import texts
 from src.bot.assets import banner
+from src.bot.keyboards.contacts import admin_keyboard, contacts_keyboard
 from src.bot.keyboards.main_menu import (
     MENU_ADMIN,
     MENU_CONTACTS,
@@ -30,11 +31,13 @@ router = Router(name="static_info")
 @router.message(Command("contacts"))
 @router.message(F.text == MENU_CONTACTS)
 async def show_contacts(message: Message) -> None:
-    # Баннер «200 м² драйва» + адрес/телефон/часы работы в caption.
+    # Баннер «200 м² драйва» + адрес/телефон/часы в caption + 3 URL-кнопки
+    # (карта, звонок, чат с админом) по ТЗ §9.4.
     await message.answer_photo(
         photo=banner("contacts"),
         caption=texts.CONTACTS_TEXT,
         parse_mode="HTML",
+        reply_markup=contacts_keyboard(),
     )
 
 
@@ -62,4 +65,8 @@ async def show_faq(message: Message) -> None:
 @router.message(Command("admin"))
 @router.message(F.text == MENU_ADMIN)
 async def show_admin(message: Message) -> None:
-    await message.answer(texts.ADMIN_TEXT, parse_mode="HTML")
+    await message.answer(
+        texts.ADMIN_TEXT,
+        parse_mode="HTML",
+        reply_markup=admin_keyboard(),
+    )

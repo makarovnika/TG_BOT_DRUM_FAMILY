@@ -31,7 +31,10 @@
 | Bot entry (`src/main.py`) | B | DI через middleware, корректное закрытие ресурсов в finally | высокая | нет тестов на сам main (трудно тестировать) | 2026-05-18 |
 | Bot handlers (`src/bot/handlers/`) | A | 8 router'ов (start, registration, commands, profile, my_bookings, booking, menu_stub) + catch-all'ы + 30+ unit-тестов | высокая | нет интеграционных тестов (порядок include_router, фильтры F.text) | 2026-05-18 |
 | FSM states (`src/bot/states/`) | A | 2 StatesGroup (registration, booking), минимум, понятны | высокая | — | 2026-05-18 |
-| YClients client (`src/yclients/`) | A | 2 режима auth, retry/refresh, 32 теста на моках, smoke против реального API прошёл; Booking + Admin API; book_record с email уточнён | высокая | DELETE-endpoint отмены не проверен на реальной записи; абонементы 404 | 2026-05-18 |
+| YClients client (`src/yclients/`) | A | 2 режима auth, retry/refresh, 32 теста на моках, smoke против реального API прошёл; Booking + Admin API; book_record с email; DELETE на singular endpoint | высокая | абонементы 404; duration=0 у услуг | 2026-05-20 |
+| Texts (`src/bot/texts.py`) | A | Все строки бота в одном модуле, брендовый тон, эмодзи из гайда | высокая | 4 toast-строки тоже здесь | 2026-05-20 |
+| Assets (`src/bot/assets.py` + `assets/`) | A | banner() + 4 PNG-баннера (все < 90 КБ) + аватар + SVG-исходники + build.sh; 4 теста на banner() | высокая | нет file_id-кэша (премий-оптимизация) | 2026-05-20 |
+| Static info (`src/bot/handlers/static_info.py`) | A | Контакты с inline-кнопками (Карта/Звонок/Админ), Стоимость, FAQ, Админ; 4 теста | высокая | Стоимость/FAQ — placeholder'ы, ждут реального наполнения | 2026-05-20 |
 | DB layer (`src/db/`) | A | User-модель + async-сессия + 6 тестов CRUD на in-memory SQLite | высокая | нет миграций (Alembic); схема меняется через recreate | 2026-05-18 |
 | Services (`src/services/`) | B | UserService + normalize_phone + 14 тестов | высокая | сервис коммитит сам внутри register() — не unit-of-work; нет тестов на ошибочные ветки YClients | 2026-05-18 |
 | Middlewares (`src/bot/middlewares/`) | A | DepsMiddleware + 3 теста (инжекция, реальный SELECT, проброс exception); инжектит yclients-клиент напрямую | высокая | — | 2026-05-18 |
@@ -42,6 +45,23 @@
 | Utils (`src/bot/utils.py`) | A | общий escape_html, убраны 3 дубликата | высокая | — | 2026-05-18 |
 
 ## Change History
+
+### 2026-05-20 — Sessions 009-010 (Phase 1 ТЗ Drum Family + аудит)
+
+- Changes: брендовый рестайл по ТЗ — texts.py, новое меню (6 кнопок),
+  static_info с 4 handler'ами, баннеры подключены в 4 ключевых места,
+  10 команд в Telegram UI. Затем аудит и фиксы: assert→raise, dead code
+  убран, inline-кнопки на «📍 Адрес» и после booking, toast'ы вынесены.
+- Domains promoted:
+  - новый домен `brand-ui-008` создан как passing.
+- Domains demoted: —
+- New gaps identified:
+  - HTML вместо MarkdownV2 (некритично).
+  - file_id-кэш не реализован.
+  - Стоимость/FAQ — placeholder-тексты.
+- Gaps closed:
+  - assert-рецидив (#3 из старого аудита окончательно закрыт).
+  - dead handler в profile.py.
 
 ### 2026-05-18 — Sessions 007–008 (закрытие 3 фич + крупный заход на 003)
 

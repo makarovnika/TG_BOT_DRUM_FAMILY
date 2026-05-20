@@ -6,22 +6,87 @@
 - Standard startup path: `./init.sh`
 - Standard verification path: `uv run pytest -q` + `uv run ruff check src tests`
   (внутри `./init.sh`), плюс `pre-commit` hook в `.githooks/pre-commit`.
-- Git: ветка `main`, 20 коммитов (последний — `209419c`).
-- Tests: **83 зелёных** (smoke, db, yclients-client, user_service, handlers, middleware, booking).
-- Passing features (4 из 8 MVP): `setup-000`, `yclients-001`, `registration-002`, `profile-005`.
-- In-progress: `booking-individual-003` (UI готов, реальная запись с email-фиксом
-  не проверена), `my-bookings-004` (UI готов, реальная отмена не проверена).
-- Not started: `booking-group-006` (групповые занятия).
+- Git: ветка `main`, ~30 коммитов на `origin/main`, push настроен через keychain.
+- Tests: **91 зелёных** (smoke, db, yclients-client, user_service, handlers,
+  middleware, booking, static_info, assets, fallback).
+- Passing features (7 из 8 MVP + 1 design): `setup-000`, `yclients-001`,
+  `registration-002`, `booking-individual-003`, `my-bookings-004`,
+  `profile-005`, `brand-ui-008`.
+- Not started: `booking-group-006` (групповых занятий у школы нет — проверено
+  smoke).
 - Partial: `deploy-007` (Docker готов, на VPS не разворачивали).
 - Закрытые открытые вопросы:
-  - SMS-подтверждение `book_record` НЕ требуется (резолв 2026-05-17 23:49).
-  - Email обязателен в `book_record` для Drum Family (резолв 2026-05-17 23:49).
+  - SMS-подтверждение `book_record` НЕ требуется.
+  - Email обязателен в `book_record` для Drum Family.
+  - Правильный endpoint отмены — `DELETE /record/{cid}/{id}` (singular).
 - Оставшиеся открытые вопросы:
-  - DELETE-endpoint отмены записи (`/records/{cid}/{id}`) не проверен на реальной записи.
   - У услуг школы `duration=0` — не понятно, откуда брать длительность.
   - У школы нет рабочего endpoint'а абонементов (`/loyalty/abonements` → 404).
+  - Phase 2 ТЗ (напоминания 24/1ч, обратная связь, Mini App) — отдельные фичи.
 
 ## Session Log
+
+### Session 010 — критический аудит после Phase 1 (2026-05-20)
+
+- Goal: пройти критическим взглядом по результату Phase 1, починить найденное.
+- Found / fixed:
+  - **🔴 assert в client.py:288** (рецидив старого #3) — заменён на raise.
+    Стрипался под `python -O`.
+  - **🟡 Dead code в profile.py** — `@router.message(F.text == MENU_PROFILE)`
+    никогда не срабатывал после Phase 1 (кнопка убрана из меню). Убрал
+    Router и декоратор; функция `show_profile` теперь вызывается только
+    из `commands.cmd_profile`. main.py не подключает profile.router.
+  - **🟡 Legacy константы** в main_menu.py (MENU_CANCEL/PROFILE/ABOUT) — удалены.
+  - **🟡 Inline-строки в callback.answer** (4 шт) — вынесены в `texts.py`
+    как `TOAST_*` константы.
+  - **🟡 ТЗ §9.4** — на «📍 Адрес» добавлены 3 URL-кнопки: Карта (2GIS),
+    Позвонить (`tel:+79952928103`), Админ (`@Drum_Family_admin`).
+  - **🟡 ТЗ §9.5** — после подтверждения записи добавлены 2 кнопки:
+    «✕ Отменить» (использует CANCEL_PREFIX из bookings.py) и
+    «🗺 Маршрут на карте». Под `/admin` тоже добавлена URL-кнопка.
+  - **🟡 Нет тестов на assets.banner()** — добавил 4 теста в tests/test_assets.py.
+  - **🟡 Tracking-файлы расходились с реальностью** — feature_list.json
+    получил новую фичу `brand-ui-008` (passing) с evidence, claude-progress.md
+    Session 009 и 010, quality-document.md актуализирован.
+- Verification run: `uv run pytest -q` — 87 → 91 (+4 на banner).
+- Files / commits: текущий коммит этой сессии.
+- Known risk: file_id-кэш для баннеров не сделан (премий-оптимизация),
+  Markdown V2 не реализован (HTML работает визуально так же).
+
+### Session 009 — Phase 1 ТЗ Drum Family (брендовый рестайл, 2026-05-19→20)
+
+- Goal: применить ТЗ дизайн-команды (`drum-family-bot-tz.md`) к боту —
+  тексты, меню, ассеты, BotFather-инструкция.
+- Completed:
+  - **texts.py** — централизация всех сообщений с брендовым тоном,
+    1-2 эмодзи, ≤8 строк, эмодзи только из гайда §10.
+  - **Новое меню** (ТЗ §9.1): 🥁 Пробный / 📅 Расписание / 💳 Стоимость /
+    📍 Адрес / ❓ FAQ / 💬 Админ. Старое (Профиль/Отменить/О школе) убрано.
+  - **static_info.py** — 4 новых handler'а на статические разделы
+    (Адрес/Стоимость/FAQ/Админ), каждый доступен через кнопку И через
+    /команду.
+  - **commands.py** — добавлены алиасы /trial /schedule /profile /contacts
+    /prices /faq /admin.
+  - **main.py** — `set_my_commands` обновлён до 10 команд из ТЗ §7.
+  - **SVG-исходники** (`assets/source/`) + `build.sh` (rsvg-convert) +
+    `assets/README.md`.
+  - **Готовые PNG** скопированы из outputs/ (cairosvg-сборка, все < 90 КБ).
+  - **bot/assets.py** — функция `banner(name)` → FSInputFile.
+  - **Подключение баннеров** в 4 handler'а: welcome → /start (новый юзер),
+    trial → start_booking, contacts → show_contacts, schedule →
+    show_my_bookings.
+  - **edit_text → edit_caption** во всех 5 шагах booking-FSM (потому
+    что первое сообщение теперь photo).
+  - **botfather/botfather-setup.md** — пошаговая инструкция: аватар,
+    Bio, About, /setcommands.
+- Verification run: `uv run pytest -q` — 60 → 87 (+5 на static_info,
+  +2 на fallback, +7 на booking handlers, обновлены 7 существующих
+  под answer_photo/edit_caption).
+- Files / commits: `783b447`, `580c4a6`, `23feda6`.
+- Known risk:
+  - Аватар и текст bio/about в @BotFather пока не установлены (это
+    действия Никиты вручную).
+  - HTML вместо MarkdownV2 (визуально то же, формально расходится с ТЗ).
 
 ### Session 008 — booking-individual-003 в почти passing (2026-05-17→18)
 

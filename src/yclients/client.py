@@ -285,7 +285,11 @@ class YClientsClient:
         async with self._auth_lock:
             self._user_token = None
             await self._auth_locked()
-        assert self._user_token is not None
+        # Здесь _auth_locked гарантирует self._user_token != None: либо
+        # успешно поставил его, либо бросил YClientsAuthError. Но assert
+        # стрипается под `python -O`, поэтому защищаемся явным raise.
+        if self._user_token is None:
+            raise YClientsAuthError("auth() завершился, но user_token не получен")
         return self._user_token
 
     async def get_services(self) -> list[Service]:

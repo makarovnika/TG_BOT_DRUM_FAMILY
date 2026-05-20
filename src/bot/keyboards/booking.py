@@ -105,3 +105,30 @@ def confirm_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def post_booking_keyboard(record_id: int) -> InlineKeyboardMarkup:
+    """Кнопки под сообщением «✅ Записал!» по ТЗ §9.5.
+
+    «Перенести» через бота сейчас не реализовано (отдельная фича), поэтому
+    кнопку не показываем — чтобы не вводить в заблуждение. Оставляем
+    «Отменить» (используется тот же callback_data, что в «📅 Моё расписание»)
+    и «Маршрут на карте» как URL-кнопку.
+    """
+    # Импорт здесь, чтобы избежать циклической зависимости с bookings.py
+    # (там Cancel-кнопка для уже созданных записей).
+    from src.bot.keyboards.bookings import CANCEL_PREFIX
+    from src.bot.keyboards.contacts import SCHOOL_MAP_URL
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✕ Отменить", callback_data=f"{CANCEL_PREFIX}:{record_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🗺 Маршрут на карте", url=SCHOOL_MAP_URL),
+            ],
+        ]
+    )

@@ -1,4 +1,4 @@
-"""Обработчик пункта меню «👤 Мой профиль».
+"""Обработчик профиля пользователя.
 
 Достаёт пользователя из SQLite, по `yclients_client_id` тянет полную
 карточку из YClients и форматирует.
@@ -11,14 +11,18 @@
 - абонементы НЕ показываем — endpoint /loyalty/abonements/{cid} вернул 404
   на школе Drum Family. Возможно, у школы оплата за каждое занятие, без
   абонементной модели. Когда выяснится — добавим.
+
+ВАЖНО: после Phase 1 (брендовый рестайл) кнопка «👤 Мой профиль» убрана
+из главного меню. Профиль теперь доступен только через команду /profile,
+которая вызывает `show_profile` напрямую из `commands.py`. Поэтому здесь
+НЕТ Router и НЕТ @router.message-декоратора — это бы создавало мёртвый
+handler, который никогда не сработает.
 """
 
 import structlog
-from aiogram import F, Router
 from aiogram.types import Message
 
 from src.bot import texts
-from src.bot.keyboards.main_menu import MENU_PROFILE
 from src.bot.utils import escape_html
 from src.services.user_service import UserService
 from src.yclients.client import YClientsClient
@@ -27,10 +31,7 @@ from src.yclients.models import Client
 
 log = structlog.get_logger("handlers.profile")
 
-router = Router(name="profile")
 
-
-@router.message(F.text == MENU_PROFILE)
 async def show_profile(
     message: Message,
     user_service: UserService,

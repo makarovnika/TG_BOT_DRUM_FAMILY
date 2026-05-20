@@ -36,6 +36,7 @@ from src.bot.keyboards.booking import (
     STAFF_PREFIX,
     confirm_keyboard,
     dates_keyboard,
+    post_booking_keyboard,
     services_keyboard,
     slots_keyboard,
     staff_keyboard,
@@ -351,6 +352,10 @@ async def confirm_booking(
     log.info("booking.created", record_id=record_id, telegram_id=user.telegram_id)
 
     pretty_time = _format_iso(data["slot_datetime"])
+    # ТЗ §9.5: под подтверждением — inline-кнопки «Отменить» и «Маршрут».
+    # Если по какой-то причине record_id не пришёл (странный кейс) — даём
+    # сообщение без кнопок, чтобы не сломалось.
+    post_kb = post_booking_keyboard(record_id) if record_id else None
     await callback.message.edit_caption(
         caption=texts.BOOKING_SUCCESS.format(
             service=escape_html(data["service_title"]),
@@ -358,9 +363,10 @@ async def confirm_booking(
             when=pretty_time,
         ),
         parse_mode="HTML",
+        reply_markup=post_kb,
     )
     await state.clear()
-    await callback.answer("Записано")
+    await callback.answer(texts.TOAST_BOOKING_DONE)
     # Возвращаем главное меню следующим сообщением
     await callback.message.answer(texts.BOOKING_WHAT_NEXT, reply_markup=main_menu_kb())
 

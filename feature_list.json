@@ -1,7 +1,7 @@
 {
   "project": "drum-school-bot",
-  "last_updated": "2026-05-18",
-  "active_feature": "booking-individual-003",
+  "last_updated": "2026-05-20",
+  "active_feature": null,
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -190,6 +190,38 @@
       ],
       "evidence": [],
       "notes": "Dockerfile на python:3.11-slim, docker-compose.yml с volume для bot.db и .env."
+    },
+    {
+      "id": "brand-ui-008",
+      "priority": 8,
+      "area": "ui",
+      "title": "Брендовый UI по ТЗ Drum Family (Фаза 1)",
+      "user_visible_behavior": "Бот выглядит и звучит как Drum Family: аватар DF на голубом, баннеры в 4 ключевых местах, новое меню из 6 кнопок, тексты в брендовом тоне, inline-кнопки на странице контактов и после подтверждения записи.",
+      "status": "passing",
+      "verification": [
+        "src/bot/texts.py — все тексты централизованы, брендовый тон, эмодзи из гайда.",
+        "Главное меню перестроено: 🥁 Пробный / 📅 Расписание / 💳 Стоимость / 📍 Адрес / ❓ FAQ / 💬 Админ.",
+        "set_my_commands регистрирует 10 команд из ТЗ §7.",
+        "assets/avatar/bot-avatar-512.png существует, ≤ 200 КБ.",
+        "Все 4 баннера (welcome/trial/contacts/schedule) 1280×640, ≤ 200 КБ.",
+        "Баннеры подключены в 4 handler'а: start (новый юзер), booking, static_info.contacts, my_bookings.",
+        "Inline-кнопки на «📍 Адрес» (Карта/Звонок/Админ) и после подтверждения записи (Отменить/Маршрут).",
+        "87 → 91 тест после Phase 1."
+      ],
+      "evidence": [
+        "2026-05-20: коммит `783b447` — texts.py + новое меню + static_info.py + 10 команд.",
+        "2026-05-20: коммит `580c4a6` — SVG-исходники + build.sh + botfather-setup.md.",
+        "2026-05-20: коммит `23feda6` — готовые PNG (через cairosvg) + assets.banner() + answer_photo/edit_caption в 4 handler'ах.",
+        "2026-05-20: финальные фиксы аудита (assert→raise, dead code, inline-кнопки на адресе и post-booking, toast'ы в texts, тесты на assets)."
+      ],
+      "remaining_for_phase_2": [
+        "ТЗ §7: аватар, bio, about в @BotFather (это действия Никиты, не код).",
+        "Trial-FSM с выбором возрастной группы (ТЗ §9.2).",
+        "FAQ-карточки с навигацией (сейчас placeholder).",
+        "Cтоимость — наполнить реальными цифрами.",
+        "MarkdownV2 вместо HTML (опционально, визуально одно и то же)."
+      ],
+      "notes": "Phase 2 ТЗ (напоминания 24ч/1ч, обратная связь после пробного, Mini App) — отдельные фичи, требуют scheduler/web-инфраструктуру."
     }
   ]
 }

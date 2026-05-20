@@ -156,6 +156,13 @@ BOOKING_CANCELLED = "Окей, запись отменена."
 
 BOOKING_WHAT_NEXT = "Что дальше?"
 
+# ---------- callback.answer toast'ы (короткие всплывашки 1-2 сек) ----------
+
+TOAST_BOOKING_DONE = "Записано"
+TOAST_CONFIRM_CANCEL = "Точно отменить?"
+TOAST_CANCEL_KEPT = "Окей, оставил запись"
+TOAST_CANCEL_DONE = "Отменено"
+
 BOOKING_ASK_SERVICE = "🥁 На какую услугу записываемся?"
 
 BOOKING_ASK_STAFF = "Услуга: <b>{service}</b>\n\nС каким тренером?"
