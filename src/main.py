@@ -15,6 +15,7 @@ from typing import Any
 
 import structlog
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 
 from src.bot.handlers import (
     booking,
@@ -77,6 +78,16 @@ async def main() -> None:
 
     # --- Telegram-бот
     bot = Bot(token=settings.bot_token)
+    # set_my_commands регистрирует команды в Telegram UI — при наборе `/`
+    # пользователь видит автоподсказку. Вызываем на каждом старте: если
+    # описание поменялось — Telegram обновит, иначе ноп.
+    await bot.set_my_commands(
+        [
+            BotCommand(command="start", description="Главное меню / регистрация"),
+            BotCommand(command="cancel", description="Отменить текущий диалог"),
+            BotCommand(command="help", description="Подсказка по командам"),
+        ]
+    )
     dp = Dispatcher()
     dp.update.middleware(DepsMiddleware(session_factory=session_factory, yclients=yclients))
     # Порядок важен: специфичные команды → /start → FSM регистрации →
