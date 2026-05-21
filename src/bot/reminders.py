@@ -35,11 +35,15 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.bot import texts
+from src.bot.keyboards.feedback import feedback_keyboard
 
 log = structlog.get_logger("reminders")
 
 REMINDER_24H_OFFSET = timedelta(hours=24)
 REMINDER_1H_OFFSET = timedelta(hours=1)
+# Через сколько ПОСЛЕ начала занятия слать запрос на оценку.
+# 2 часа = 1 час урока + 1 час «отдыха», впечатления свежие, эмоция переварилась.
+FEEDBACK_AFTER_OFFSET = timedelta(hours=2)
 
 
 class RemindersScheduler:
@@ -124,6 +128,46 @@ class RemindersScheduler:
                 lesson_datetime=lesson_datetime.isoformat(),
             )
 
+    def schedule_feedback_for_booking(
+        self,
+        *,
+        record_id: int,
+        telegram_id: int,
+        lesson_datetime: datetime,
+        summary: str,
+    ) -> None:
+        """Через FEEDBACK_AFTER_OFFSET после начала занятия — запрос оценки 1-5.
+
+        ID job-а добавляется в тот же `_jobs[record_id]`, что и reminder'ы.
+        cancel_for_booking снимет и его.
+        """
+        if lesson_datetime.tzinfo is None:
+            log.warning("feedback.naive_datetime_rejected", record_id=record_id)
+            return
+
+        fire_at = lesson_datetime + FEEDBACK_AFTER_OFFSET
+        now = datetime.now(tz=lesson_datetime.tzinfo)
+        if fire_at <= now:
+            # Занятие уже прошло сильно давно — нет смысла спрашивать.
+            return
+
+        job = self._scheduler.add_job(
+            self._send_feedback_request,
+            trigger="date",
+            run_date=fire_at,
+            kwargs={
+                "telegram_id": telegram_id,
+                "record_id": record_id,
+                "summary": summary,
+            },
+        )
+        self._jobs.setdefault(record_id, []).append(job.id)
+        log.info(
+            "feedback.scheduled",
+            record_id=record_id,
+            fire_at=fire_at.isoformat(),
+        )
+
     def cancel_for_booking(self, record_id: int) -> None:
         """Удаляет все запланированные напоминания для записи."""
         job_ids = self._jobs.pop(record_id, [])
@@ -155,6 +199,30 @@ class RemindersScheduler:
             log.warning(
                 "reminder.send_failed",
                 kind=kind,
+                record_id=record_id,
+                telegram_id=telegram_id,
+                error=str(exc),
+            )
+
+    async def _send_feedback_request(
+        self,
+        *,
+        telegram_id: int,
+        record_id: int,
+        summary: str,
+    ) -> None:
+        """Тело job-а: шлёт запрос оценки с inline-кнопками 1-5."""
+        try:
+            await self._bot.send_message(
+                telegram_id,
+                texts.FEEDBACK_ASK.format(summary=summary),
+                parse_mode="HTML",
+                reply_markup=feedback_keyboard(record_id),
+            )
+            log.info("feedback.sent", record_id=record_id, telegram_id=telegram_id)
+        except TelegramAPIError as exc:
+            log.warning(
+                "feedback.send_failed",
                 record_id=record_id,
                 telegram_id=telegram_id,
                 error=str(exc),

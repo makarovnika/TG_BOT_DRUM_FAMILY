@@ -401,8 +401,9 @@ async def confirm_booking(
 
     pretty_time = _format_iso(data["slot_datetime"])
 
-    # Планируем напоминания за 24ч и за 1ч до начала занятия (ТЗ §8.13, §8.14).
-    # Передаём короткое HTML-summary, который вставится в шаблон reminder'а.
+    # Планируем напоминания + запрос оценки.
+    # - 24ч и 1ч ДО начала: ТЗ §8.13, §8.14
+    # - 2ч ПОСЛЕ начала: ТЗ §8.15 (обратная связь)
     if record_id is not None:
         try:
             lesson_dt = datetime.fromisoformat(data["slot_datetime"])
@@ -412,6 +413,12 @@ async def confirm_booking(
                 f"🕒 {pretty_time}"
             )
             reminders.schedule_for_booking(
+                record_id=record_id,
+                telegram_id=user.telegram_id,
+                lesson_datetime=lesson_dt,
+                summary=summary,
+            )
+            reminders.schedule_feedback_for_booking(
                 record_id=record_id,
                 telegram_id=user.telegram_id,
                 lesson_datetime=lesson_dt,

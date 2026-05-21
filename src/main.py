@@ -21,6 +21,7 @@ from src.bot.handlers import (
     booking,
     commands,
     faq,
+    feedback,
     menu_stub,
     my_bookings,
     registration,
@@ -119,6 +120,7 @@ async def main() -> None:
     dp.include_router(my_bookings.router)
     dp.include_router(booking.router)
     dp.include_router(faq.router)
+    dp.include_router(feedback.router)
     dp.include_router(static_info.router)
     dp.include_router(menu_stub.router)
 

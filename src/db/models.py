@@ -14,7 +14,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, DateTime, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -51,4 +51,38 @@ class User(Base):
             f"User(telegram_id={self.telegram_id}, "
             f"yclients_client_id={self.yclients_client_id}, "
             f"full_name={self.full_name!r})"
+        )
+
+
+class Feedback(Base):
+    """Оценка занятия пользователем (ТЗ §8.15).
+
+    Создаётся, когда пользователь нажимает одну из inline-кнопок ⭐⭐⭐⭐⭐
+    под reminder-сообщением через ~2 часа после занятия.
+
+    Зачем храним:
+    - админ школы может запросить агрегаты («средняя оценка тренеров»);
+    - можно увидеть тренд (улучшается/ухудшается удовлетворённость);
+    - индивидуальный low-rating — повод позвонить ученику.
+
+    Не храним свободный комментарий — ТЗ §8.15 предусматривает только
+    рейтинг 1-5. Если в будущем понадобится — добавим колонку `comment`.
+    """
+
+    __tablename__ = "feedbacks"
+
+    # Integer (не BigInteger): SQLite поддерживает autoincrement только
+    # на INTEGER PRIMARY KEY. Школе из 100 учеников хватит 2^31 оценок
+    # с большим запасом.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    # record_id из YClients — позволяет связать оценку с конкретным занятием.
+    yclients_record_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=None)
+    rating: Mapped[int] = mapped_column()  # 1..5
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return (
+            f"Feedback(id={self.id}, telegram_id={self.telegram_id}, "
+            f"rating={self.rating}, yclients_record_id={self.yclients_record_id})"
         )

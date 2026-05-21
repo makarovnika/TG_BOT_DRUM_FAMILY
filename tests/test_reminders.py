@@ -124,3 +124,56 @@ def test_cancel_unknown_record_id_is_noop(scheduler: RemindersScheduler) -> None
     """Отмена записи, которой не было в кэше — тихий ноп."""
     scheduler.cancel_for_booking(999)
     scheduler._scheduler.remove_job.assert_not_called()
+
+
+# ---------- feedback (ТЗ §8.15) ----------
+
+
+def test_schedule_feedback_adds_job_after_lesson(scheduler: RemindersScheduler) -> None:
+    """Запрос оценки планируется на 2 часа ПОСЛЕ начала занятия."""
+    scheduler._scheduler.add_job.side_effect = [_job("j-fb")]
+
+    lesson = datetime.now(tz=TOMSK) + timedelta(days=1)
+    scheduler.schedule_feedback_for_booking(
+        record_id=42, telegram_id=12345, lesson_datetime=lesson, summary="..."
+    )
+
+    assert scheduler._scheduler.add_job.call_count == 1
+    assert scheduler.jobs_by_record == {42: ["j-fb"]}
+
+
+def test_schedule_feedback_appends_to_existing_jobs(scheduler: RemindersScheduler) -> None:
+    """Если для записи уже есть reminder'ы, feedback-job добавляется к ним."""
+    scheduler._scheduler.add_job.side_effect = [
+        _job("j-24h"),
+        _job("j-1h"),
+        _job("j-fb"),
+    ]
+    lesson = datetime.now(tz=TOMSK) + timedelta(days=3)
+
+    scheduler.schedule_for_booking(
+        record_id=42, telegram_id=12345, lesson_datetime=lesson, summary="..."
+    )
+    scheduler.schedule_feedback_for_booking(
+        record_id=42, telegram_id=12345, lesson_datetime=lesson, summary="..."
+    )
+
+    # Все 3 job'а ассоциированы с одним record_id — cancel снимет все три.
+    assert scheduler.jobs_by_record[42] == ["j-24h", "j-1h", "j-fb"]
+
+
+def test_schedule_feedback_rejects_naive_datetime(scheduler: RemindersScheduler) -> None:
+    naive = datetime.now() + timedelta(days=1)
+    scheduler.schedule_feedback_for_booking(
+        record_id=1, telegram_id=12345, lesson_datetime=naive, summary="..."
+    )
+    scheduler._scheduler.add_job.assert_not_called()
+
+
+def test_schedule_feedback_skipped_if_lesson_long_past(scheduler: RemindersScheduler) -> None:
+    """Если занятие было неделю назад (странный кейс) — фидбэк не шлём."""
+    long_past = datetime.now(tz=TOMSK) - timedelta(days=7)
+    scheduler.schedule_feedback_for_booking(
+        record_id=1, telegram_id=12345, lesson_datetime=long_past, summary="..."
+    )
+    scheduler._scheduler.add_job.assert_not_called()
